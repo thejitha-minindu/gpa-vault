@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AuthModal from './components/AuthModal';
 import TopNav from './components/TopNav';
 import DashboardView from './views/DashboardView';
@@ -30,7 +30,11 @@ export default function App() {
   const [authError, setAuthError] = useState('');
   const [googleLoading, setGoogleLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState({ busy: false, message: '' });
-  const [hydrated, setHydrated] = useState(false);
+
+  // Refs for synchronous save-gating (no render-delay like useState)
+  const isHydratingRef = useRef(true);   // blocks saves until hydration completes
+  const userModifiedRef = useRef(false);  // only true after user makes a change
+  const saveTimerRef = useRef(null);      // debounce timer for saves
 
   const scale = SCALES[scaleName];
   const isSupabaseConfigured = Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
@@ -92,7 +96,11 @@ export default function App() {
       const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
         if (!isMounted) return;
         if (session?.user) {
-          setCurrentUser({ id: session.user.id, email: session.user.email });
+          // Only update if user ID actually changed to avoid re-triggering hydration
+          setCurrentUser(prev => {
+            if (prev?.id === session.user.id) return prev;
+            return { id: session.user.id, email: session.user.email };
+          });
         } else {
           setCurrentUser(null);
         }
@@ -109,15 +117,17 @@ export default function App() {
     };
   }, [isSupabaseConfigured]);
 
+  // ── Hydration: load user data from Supabase on login ─────────────────────
   useEffect(() => {
     if (!currentUser || !ready) return;
 
     let isCancelled = false;
-    setHydrated(false);
+    isHydratingRef.current = true;
+    userModifiedRef.current = false;
 
     const hydrate = async () => {
       if (!isSupabaseConfigured) {
-        setHydrated(true);
+        isHydratingRef.current = false;
         return;
       }
 
@@ -135,7 +145,14 @@ export default function App() {
       } catch (error) {
         console.error('Failed to hydrate Supabase data', error);
       } finally {
-        if (!isCancelled) setHydrated(true);
+        if (!isCancelled) {
+          // Allow saves only after React has flushed the hydrated state
+          requestAnimationFrame(() => {
+            if (!isCancelled) {
+              isHydratingRef.current = false;
+            }
+          });
+        }
       }
     };
 
@@ -146,23 +163,37 @@ export default function App() {
     };
   }, [currentUser, ready, isSupabaseConfigured]);
 
+  // ── Local preferences (localStorage only, not Supabase) ─────────────────
   useEffect(() => {
     if (!ready) return;
-
     saveJSON('gpa-vault-preferences', { dark, scaleName, priorGPA, priorCreds });
   }, [dark, scaleName, priorGPA, priorCreds, ready]);
 
+  // ── Auto-save to Supabase (debounced, only after user modifications) ────
   useEffect(() => {
-    if (!currentUser || !ready || !hydrated) return;
-
-    if (isSupabaseConfigured) {
-      saveUserDataToSupabase(currentUser.id, { semesters, dark, scaleName, priorGPA, priorCreds }).catch(error => {
-        console.error('Failed to sync data to Supabase', error);
-      });
-    } else {
-      saveUserData(currentUser.id, { semesters, dark, scaleName, priorGPA, priorCreds });
+    if (!currentUser || !ready) return;
+    // Skip if we're still hydrating (ref is synchronous — no render gap)
+    if (isHydratingRef.current) return;
+    // Mark that user has modified data (skips the first post-hydration trigger)
+    if (!userModifiedRef.current) {
+      userModifiedRef.current = true;
+      return;
     }
-  }, [currentUser, semesters, dark, scaleName, priorGPA, priorCreds, ready, hydrated, isSupabaseConfigured]);
+
+    // Debounce: cancel any pending save, schedule a new one
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      if (isSupabaseConfigured) {
+        saveUserDataToSupabase(currentUser.id, { semesters, dark, scaleName, priorGPA, priorCreds }).catch(error => {
+          console.error('Failed to sync data to Supabase', error);
+        });
+      } else {
+        saveUserData(currentUser.id, { semesters, dark, scaleName, priorGPA, priorCreds });
+      }
+    }, 800);
+
+    return () => clearTimeout(saveTimerRef.current);
+  }, [currentUser, semesters, dark, scaleName, priorGPA, priorCreds, ready, isSupabaseConfigured]);
 
   const allCourses = useMemo(() => semesters.flatMap(semester => semester.courses), [semesters]);
 
@@ -338,9 +369,12 @@ export default function App() {
     } else {
       logoutUser();
     }
+    // Clear pending save timer so we don't save empty state
+    clearTimeout(saveTimerRef.current);
     setCurrentUser(null);
     setSemesters([]);
-    setHydrated(false);
+    isHydratingRef.current = true;
+    userModifiedRef.current = false;
   };
 
   if (!ready) {
