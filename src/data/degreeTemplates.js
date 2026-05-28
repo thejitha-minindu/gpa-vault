@@ -1,0 +1,42 @@
+export const TEMPLATES = {
+  "Computer Science": [
+    { name: "Data Structures", credits: 4 },
+    { name: "Algorithms", credits: 3 },
+    { name: "Operating Systems", credits: 3 },
+    { name: "Databases", credits: 3 },
+    { name: "Computer Networks", credits: 3 },
+    { name: "Software Engineering", credits: 3 },
+  ],
+  "Business Administration": [
+    { name: "Principles of Management", credits: 3 },
+    { name: "Financial Accounting", credits: 3 },
+    { name: "Business Statistics", credits: 3 },
+    { name: "Marketing Fundamentals", credits: 3 },
+    { name: "Business Law", credits: 3 },
+    { name: "Economics", credits: 3 },
+  ],
+  "Engineering": [
+    { name: "Calculus I", credits: 4 },
+    { name: "Physics I", credits: 4 },
+    { name: "Engineering Drawing", credits: 3 },
+    { name: "Materials Science", credits: 3 },
+    { name: "Thermodynamics", credits: 3 },
+    { name: "Circuit Theory", credits: 3 },
+  ],
+  "Medicine / Pre-Med": [
+    { name: "General Chemistry", credits: 4 },
+    { name: "Organic Chemistry", credits: 4 },
+    { name: "Biology I", credits: 4 },
+    { name: "Physics (Bio-med)", credits: 3 },
+    { name: "Biochemistry", credits: 3 },
+    { name: "Anatomy & Physiology", credits: 3 },
+  ],
+  "Arts & Humanities": [
+    { name: "Introduction to Literature", credits: 3 },
+    { name: "Art History", credits: 3 },
+    { name: "Philosophy", credits: 3 },
+    { name: "World History", credits: 3 },
+    { name: "Creative Writing", credits: 3 },
+    { name: "Cultural Studies", credits: 3 },
+  ],
+};
