@@ -77,9 +77,13 @@ Create a `.env.local` file in the project root:
 ```env
 VITE_SUPABASE_URL=https://your-project-id.supabase.co
 VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+VITE_GEMINI_API_KEY=your-google-ai-studio-api-key
+VITE_GEMINI_MODEL=gemini-2.5-flash-lite
 ```
 
 > ⚠️ **Never commit `.env.local` to Git.** It is already listed in `.gitignore`.
+
+> `VITE_GEMINI_API_KEY` is exposed to the browser, so use it only for a personal/local app or move the AI call behind a backend before public deployment.
 
 ### 5. Run the Dev Server
 
@@ -100,6 +104,8 @@ The app will be available at **http://localhost:3000**.
 3. Add your environment variables in the Vercel project settings:
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
+   - `VITE_GEMINI_API_KEY`
+   - `VITE_GEMINI_MODEL`
 4. Deploy — Vercel auto-detects Vite and handles the build
 
 > **Important:** After deploying, add your Vercel URL to Supabase → Authentication → URL Configuration → Redirect URLs.

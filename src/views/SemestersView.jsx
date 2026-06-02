@@ -1,6 +1,6 @@
 import SemesterCard from '../components/SemesterCard';
 
-export default function SemestersView({ semesters, scale, theme, scaleName, addSemester, updateSemester, deleteSemester, addCourse, updateCourse, deleteCourse, setShowTemplate, onSave, saveStatus }) {
+export default function SemestersView({ semesters, scale, theme, scaleName, addSemester, updateSemester, deleteSemester, addCourse, updateCourse, deleteCourse, importCourses, onSave, saveStatus }) {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 22, gap: 12 }}>
@@ -9,7 +9,6 @@ export default function SemestersView({ semesters, scale, theme, scaleName, addS
           <p style={{ color: theme.sub, fontSize: 14, margin: 0 }}>Scale: <strong style={{ color: theme.accent }}>{scaleName}</strong> · Double-click name to rename</p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexShrink: 0, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          <button onClick={() => setShowTemplate(true)} style={{ padding: '8px 16px', background: theme.accentBg, border: `1px solid rgba(232,184,75,0.3)`, borderRadius: 10, color: theme.accent, cursor: 'pointer', fontSize: 12, fontWeight: 500, fontFamily: 'inherit' }}>📋 Template</button>
           <button onClick={onSave} disabled={saveStatus?.busy} style={{ padding: '9px 18px', background: saveStatus?.busy ? 'rgba(232,184,75,0.35)' : theme.accent, border: 'none', borderRadius: 10, color: '#0d1117', cursor: saveStatus?.busy ? 'wait' : 'pointer', fontSize: 14, fontWeight: 600, fontFamily: 'inherit', opacity: saveStatus?.busy ? 0.8 : 1 }}>Save</button>
           <button onClick={addSemester} style={{ padding: '9px 18px', background: theme.accent, border: 'none', borderRadius: 10, color: '#0d1117', cursor: 'pointer', fontSize: 14, fontWeight: 600, fontFamily: 'inherit' }}>+ Semester</button>
         </div>
@@ -32,6 +31,7 @@ export default function SemestersView({ semesters, scale, theme, scaleName, addS
           onAddCourse={() => addCourse(semester.id)}
           onUpdateCourse={(courseId, patch) => updateCourse(semester.id, courseId, patch)}
           onDeleteCourse={courseId => deleteCourse(semester.id, courseId)}
+          onImportCourses={(courses, options) => importCourses(semester.id, courses, options)}
         />
       ))}
     </div>
