@@ -1,9 +1,11 @@
 import { useState } from 'react';
+import PictureImportPanel from './PictureImportPanel';
 import { calcGPA, fmt, gColDyn, semCreds } from '../utils/gpa';
 
-export default function SemesterCard({ semester, scale, theme, onUpdate, onDelete, onAddCourse, onUpdateCourse, onDeleteCourse }) {
+export default function SemesterCard({ semester, scale, theme, onUpdate, onDelete, onAddCourse, onUpdateCourse, onDeleteCourse, onImportCourses }) {
   const [open, setOpen] = useState(true);
   const [editing, setEditing] = useState(false);
+  const [showPictureImport, setShowPictureImport] = useState(false);
   const [nameVal, setNameVal] = useState(semester.name);
 
   const gpa = calcGPA(semester.courses, scale);
@@ -100,7 +102,19 @@ export default function SemesterCard({ semester, scale, theme, onUpdate, onDelet
             </div>
           ))}
 
-          <button onClick={onAddCourse} style={{ marginTop: 10, padding: '7px 14px', background: theme.accentBg, border: `1px solid rgba(232,184,75,0.25)`, borderRadius: 8, color: theme.accent, cursor: 'pointer', fontSize: 13, fontWeight: 500, fontFamily: 'inherit' }}>+ Add Course</button>
+          <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+            <button onClick={onAddCourse} style={{ padding: '7px 14px', background: theme.accentBg, border: `1px solid rgba(232,184,75,0.25)`, borderRadius: 8, color: theme.accent, cursor: 'pointer', fontSize: 13, fontWeight: 500, fontFamily: 'inherit' }}>+ Add Course</button>
+            <button onClick={() => setShowPictureImport(value => !value)} style={{ padding: '7px 14px', background: theme.input, border: `1px solid ${theme.border}`, borderRadius: 8, color: theme.text, cursor: 'pointer', fontSize: 13, fontWeight: 500, fontFamily: 'inherit' }}>Import Picture</button>
+          </div>
+
+          {showPictureImport && (
+            <PictureImportPanel
+              scale={scale}
+              theme={theme}
+              onClose={() => setShowPictureImport(false)}
+              onImport={(courses, options) => onImportCourses(courses, options)}
+            />
+          )}
         </div>
       )}
     </div>

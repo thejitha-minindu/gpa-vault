@@ -6,8 +6,7 @@ import SemestersView from './views/SemestersView';
 import AnalyticsView from './views/AnalyticsView';
 import WhatIfView from './views/WhatIfView';
 import { SCALES } from './data/gradeScales';
-import { TEMPLATES } from './data/degreeTemplates';
-import { calcGPA, fmt, gColDyn, semCreds, uid } from './utils/gpa';
+import { calcGPA, fmt, gColDyn, normalizeSemesters, semCreds, uid } from './utils/gpa';
 import { loadJSON, saveJSON } from './utils/storage';
 import { getCurrentSession, loadUserData, loginUser, logoutUser, registerUser, saveUserData } from './utils/auth';
 import { supabase } from './lib/supabase';
@@ -20,7 +19,6 @@ export default function App() {
   const [view, setView] = useState('dashboard');
   const [scaleName, setScaleName] = useState('4.2 Standard');
   const [showSettings, setShowSettings] = useState(false);
-  const [showTemplate, setShowTemplate] = useState(false);
   const [priorGPA, setPriorGPA] = useState('');
   const [priorCreds, setPriorCreds] = useState('');
   const [whatIf, setWhatIf] = useState([{ id: uid(), name: '', credits: 3, grade: 'A' }]);
@@ -127,6 +125,14 @@ export default function App() {
 
     const hydrate = async () => {
       if (!isSupabaseConfigured) {
+        const savedData = loadUserData(currentUser.id);
+        if (savedData && !isCancelled) {
+          setSemesters(normalizeSemesters(savedData.semesters, scale.grades[0]));
+          setDark(savedData.dark ?? true);
+          setScaleName(savedData.scaleName ?? '4.2 Standard');
+          setPriorGPA(savedData.priorGPA ?? '');
+          setPriorCreds(savedData.priorCreds ?? '');
+        }
         isHydratingRef.current = false;
         return;
       }
@@ -136,7 +142,7 @@ export default function App() {
         if (isCancelled) return;
 
         if (savedData) {
-          setSemesters(savedData.semesters ?? []);
+          setSemesters(normalizeSemesters(savedData.semesters, scale.grades[0]));
           setDark(savedData.dark ?? true);
           setScaleName(savedData.scaleName ?? '4.2 Standard');
           setPriorGPA(savedData.priorGPA ?? '');
@@ -161,7 +167,7 @@ export default function App() {
     return () => {
       isCancelled = true;
     };
-  }, [currentUser, ready, isSupabaseConfigured]);
+  }, [currentUser, ready, isSupabaseConfigured, scale.grades]);
 
   // ── Local preferences (localStorage only, not Supabase) ─────────────────
   useEffect(() => {
@@ -242,7 +248,7 @@ export default function App() {
       const gpaValue = calcGPA(semester.courses, scale);
       return gpaValue !== null ? { name: semester.name, gpa: parseFloat(gpaValue.toFixed(2)), credits: semCreds(semester, scale.points) } : null;
     }).filter(Boolean),
-  [semesters, scale]);
+    [semesters, scale]);
 
   const gradeDistData = useMemo(() => {
     const counts = {};
@@ -290,14 +296,20 @@ export default function App() {
   const addCourse = semesterId => setSemesters(current => current.map(semester => semester.id === semesterId ? { ...semester, courses: [...semester.courses, { id: uid(), name: '', credits: 3, grade: scale.grades[0] }] } : semester));
   const updateCourse = (semesterId, courseId, patch) => setSemesters(current => current.map(semester => semester.id === semesterId ? { ...semester, courses: semester.courses.map(course => course.id === courseId ? { ...course, ...patch } : course) } : semester));
   const deleteCourse = (semesterId, courseId) => setSemesters(current => current.map(semester => semester.id === semesterId ? { ...semester, courses: semester.courses.filter(course => course.id !== courseId) } : semester));
-
-  const applyTemplate = templateName => {
-    const template = TEMPLATES[templateName];
-    if (!template || !semesters.length) return;
-    const latestSemester = semesters[semesters.length - 1];
-    setSemesters(current => current.map(semester => semester.id === latestSemester.id ? { ...semester, courses: template.map(item => ({ id: uid(), name: item.name, credits: item.credits, grade: scale.grades[0] })) } : semester));
-    setShowTemplate(false);
-    setView('semesters');
+  const importCourses = (semesterId, courses, options = {}) => {
+    setSemesters(current => current.map(semester => {
+      if (semester.id !== semesterId) return semester;
+      const importedCourses = courses.map(course => ({
+        id: uid(),
+        name: course.name,
+        credits: course.credits || 3,
+        grade: scale.grades.includes(course.grade) ? course.grade : scale.grades[0],
+      }));
+      return {
+        ...semester,
+        courses: options.replaceExisting ? importedCourses : [...semester.courses, ...importedCourses],
+      };
+    }));
   };
 
   const saveData = useCallback(async () => {
@@ -394,7 +406,7 @@ export default function App() {
             setView={setView}
             theme={theme}
             currentUser={currentUser}
-            onOpenAuth={() => {}}
+            onOpenAuth={() => { }}
             onLogout={handleLogout}
             onToggleTheme={() => setDark(value => !value)}
             onToggleSettings={() => setShowSettings(value => !value)}
@@ -426,26 +438,6 @@ export default function App() {
                   </div>
                   {priorGPA && priorCreds && <div style={{ paddingTop: 16, fontSize: 12, color: theme.accent }}>✓ included</div>}
                 </div>
-              </div>
-
-              <div>
-                <div style={{ fontSize: 11, color: theme.sub, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8 }}>Degree Templates</div>
-                <button onClick={() => setShowTemplate(value => !value)} style={{ padding: '8px 16px', background: theme.accentBg, border: `1px solid rgba(232,184,75,0.3)`, borderRadius: 10, color: theme.accent, cursor: 'pointer', fontSize: 13, fontWeight: 500, fontFamily: 'inherit' }}>📋 Apply Template</button>
-              </div>
-            </div>
-          )}
-
-          {showTemplate && (
-            <div onClick={() => setShowTemplate(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <div onClick={e => e.stopPropagation()} style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 16, padding: 24, width: 340, maxWidth: '90vw' }}>
-                <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 18, fontWeight: 700, color: theme.text, marginBottom: 4 }}>Choose a Template</div>
-                <p style={{ color: theme.sub, fontSize: 13, margin: '0 0 16px' }}>Fills the latest semester with common courses.</p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {Object.keys(TEMPLATES).map(templateName => (
-                    <button key={templateName} onClick={() => applyTemplate(templateName)} style={{ padding: '10px 14px', background: theme.input, border: `1px solid ${theme.border}`, borderRadius: 10, color: theme.text, cursor: 'pointer', fontSize: 14, textAlign: 'left', fontFamily: 'inherit', fontWeight: 500 }}>{templateName}</button>
-                  ))}
-                </div>
-                <button onClick={() => setShowTemplate(false)} style={{ marginTop: 14, width: '100%', padding: '8px', background: 'transparent', border: `1px solid ${theme.border}`, borderRadius: 10, color: theme.sub, cursor: 'pointer', fontSize: 13, fontFamily: 'inherit' }}>Cancel</button>
               </div>
             </div>
           )}
@@ -481,7 +473,7 @@ export default function App() {
                 addCourse={addCourse}
                 updateCourse={updateCourse}
                 deleteCourse={deleteCourse}
-                setShowTemplate={setShowTemplate}
+                importCourses={importCourses}
                 onSave={saveData}
                 saveStatus={saveStatus}
               />
