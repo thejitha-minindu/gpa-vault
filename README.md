@@ -16,7 +16,7 @@ A premium GPA calculator and academic performance tracker with real-time analyti
 - **Analytics Dashboard** — GPA trend charts, credit-load bars, and grade distribution pie charts powered by Recharts
 - **What-If Planner** — Add hypothetical courses and instantly see how they affect your projected CGPA
 - **Target GPA Calculator** — Find the average grade you need in remaining credits to hit a goal
-- **Degree Templates** — Quick-fill semesters with common course structures (CS, Business, Engineering, Medicine, Arts)
+- **AI Picture Import** — Upload a photo of your transcript and extract courses automatically via a Supabase Edge Function + Gemini
 - **Prior Record Support** — Include a previous GPA and credit count for transfer students
 - **Google OAuth** — Sign in with Google via Supabase Auth
 - **Cloud Sync** — All semesters, courses, and preferences are persisted in Supabase (PostgreSQL) with Row Level Security
@@ -66,7 +66,13 @@ npm install
    - `semester_records` — semester metadata
    - `course_records` — individual course entries
 3. Go to **Authentication → Providers** and enable **Google** (add your OAuth client ID and secret)
-4. Go to **Authentication → URL Configuration** and add your app's URL to **Redirect URLs**:
+4. Deploy the `analyze-picture` Edge Function and set the Gemini API key as a server-side secret:
+   ```bash
+   supabase functions deploy analyze-picture
+   supabase secrets set GEMINI_API_KEY=your-google-ai-studio-api-key
+   ```
+   > The key is read by `supabase/functions/analyze-picture/index.ts` — it is **never** exposed to the browser.
+5. Go to **Authentication → URL Configuration** and add your app's URL to **Redirect URLs**:
    - For local dev: `http://localhost:3000`
    - For production: `https://gpa-vault.vercel.app`
 
@@ -77,13 +83,12 @@ Create a `.env.local` file in the project root:
 ```env
 VITE_SUPABASE_URL=https://your-project-id.supabase.co
 VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
-VITE_GEMINI_API_KEY=your-google-ai-studio-api-key
-VITE_GEMINI_MODEL=gemini-2.5-flash-lite
+
+# Set this in Supabase via: supabase secrets set GEMINI_API_KEY=...
+# (it's read server-side by supabase/functions/analyze-picture)
 ```
 
 > ⚠️ **Never commit `.env.local` to Git.** It is already listed in `.gitignore`.
-
-> `VITE_GEMINI_API_KEY` is exposed to the browser, so use it only for a personal/local app or move the AI call behind a backend before public deployment.
 
 ### 5. Run the Dev Server
 
@@ -104,8 +109,6 @@ The app will be available at **http://localhost:3000**.
 3. Add your environment variables in the Vercel project settings:
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
-   - `VITE_GEMINI_API_KEY`
-   - `VITE_GEMINI_MODEL`
 4. Deploy — Vercel auto-detects Vite and handles the build
 
 > **Important:** After deploying, add your Vercel URL to Supabase → Authentication → URL Configuration → Redirect URLs.
@@ -130,15 +133,16 @@ gpa-vault/
 ├── package.json
 ├── .env.local                  # Supabase credentials (not committed)
 ├── supabase/
-│   └── schema.sql              # Database schema with RLS policies
+│   ├── schema.sql              # Database schema with RLS policies
+│   └── functions/
+│       └── analyze-picture/    # Gemini-powered transcript extraction
 └── src/
     ├── main.jsx                # React entry point
     ├── App.jsx                 # Root component — state, effects, routing
     ├── lib/
     │   └── supabase.js         # Supabase client initialisation
     ├── data/
-    │   ├── gradeScales.js      # Grading scale definitions
-    │   └── degreeTemplates.js  # Degree template course lists
+    │   └── gradeScales.js      # Grading scale definitions
     ├── utils/
     │   ├── gpa.js              # GPA calculation helpers
     │   ├── storage.js          # localStorage wrappers

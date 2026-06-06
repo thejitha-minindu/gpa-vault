@@ -43,12 +43,22 @@ export default function SemesterCard({ semester, scale, theme, onUpdate, onDelet
               style={{ ...inputStyle, fontWeight: 600, fontSize: 15, flex: 1, minWidth: 0 }}
             />
           ) : (
-            <span
-              style={{ fontSize: 15, fontWeight: 600, color: theme.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
-              onDoubleClick={e => { e.stopPropagation(); setEditing(true); setNameVal(semester.name); }}
-            >
-              {semester.name}
-            </span>
+            <>
+              <span
+                style={{ fontSize: 15, fontWeight: 600, color: theme.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                onDoubleClick={e => { e.stopPropagation(); setEditing(true); setNameVal(semester.name); }}
+              >
+                {semester.name}
+              </span>
+              {/* Pencil button for rename — makes discoverability obvious */}
+              <button
+                onClick={e => { e.stopPropagation(); setEditing(true); setNameVal(semester.name); }}
+                aria-label={`Rename ${semester.name}`}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: theme.sub, fontSize: 13, padding: '2px 4px', borderRadius: 4, opacity: 0.5, flexShrink: 0, lineHeight: 1 }}
+              >
+                ✏️
+              </button>
+            </>
           )}
           <span style={{ fontSize: 11, color: theme.sub, background: 'rgba(128,128,128,0.12)', padding: '2px 8px', borderRadius: 20, whiteSpace: 'nowrap', flexShrink: 0 }}>{credits} cr</span>
         </div>
@@ -69,8 +79,8 @@ export default function SemesterCard({ semester, scale, theme, onUpdate, onDelet
             <div style={{ fontSize: 20, fontWeight: 700, color, fontFamily: "'Playfair Display',serif", lineHeight: 1 }}>{fmt(gpa)}</div>
             <div style={{ fontSize: 10, color: theme.sub, marginTop: 2 }}>GPA</div>
           </div>
-          <button onClick={e => { e.stopPropagation(); onDelete(); }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: theme.sub, fontSize: 15, padding: '4px 6px', borderRadius: 6, opacity: 0.6 }}>🗑</button>
-          <span style={{ color: theme.sub, fontSize: 13, transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s', display: 'block' }}>▾</span>
+          <button onClick={e => { e.stopPropagation(); onDelete(); }} aria-label={`Delete ${semester.name}`} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: theme.sub, fontSize: 15, padding: '4px 6px', borderRadius: 6, opacity: 0.6 }}>🗑</button>
+          <span aria-label={open ? 'Collapse semester' : 'Expand semester'} role="img" style={{ color: theme.sub, fontSize: 13, transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s', display: 'block' }}>▾</span>
         </div>
       </div>
 
@@ -98,7 +108,7 @@ export default function SemesterCard({ semester, scale, theme, onUpdate, onDelet
               <div style={{ width: 40, textAlign: 'center', fontSize: 13, fontWeight: 600, color: gColDyn(scale.points[course.grade] ?? null, scale.max) }}>
                 {scale.points[course.grade]?.toFixed(scale.max >= 10 ? 0 : 1) ?? '—'}
               </div>
-              <button onClick={() => onDeleteCourse(course.id)} style={{ width: 28, background: 'transparent', border: 'none', cursor: 'pointer', color: '#f87171', fontSize: 18, borderRadius: 6, lineHeight: 1 }}>×</button>
+              <button onClick={() => onDeleteCourse(course.id)} aria-label={`Delete ${course.name || 'course'}`} style={{ width: 28, background: 'transparent', border: 'none', cursor: 'pointer', color: '#f87171', fontSize: 18, borderRadius: 6, lineHeight: 1 }}>×</button>
             </div>
           ))}
 

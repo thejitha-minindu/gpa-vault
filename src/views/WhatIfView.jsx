@@ -1,6 +1,6 @@
-import { gColDyn, uid } from '../utils/gpa';
+import { fmt, gColDyn, uid } from '../utils/gpa';
 
-export default function WhatIfView({ scale, theme, allCourses, whatIf, setWhatIf, targetGPA, setTargetGPA, targetCr, setTargetCr, projGPA, targetResult, scaleName, cgpa, calcGPAEff }) {
+export default function WhatIfView({ scale, theme, allCourses, whatIf, setWhatIf, targetGPA, setTargetGPA, targetCr, setTargetCr, projGPA, targetResult, scaleName, cgpa }) {
   const inputStyle = {
     background: theme.input,
     border: `1px solid ${theme.border}`,
@@ -21,8 +21,8 @@ export default function WhatIfView({ scale, theme, allCourses, whatIf, setWhatIf
 
       <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
         {[
-          { label: 'Current CGPA', val: cgpa.toFixed(2), color: gColDyn(cgpa, scale.max), note: 'from logged data', border: theme.border },
-          { label: 'Projected CGPA', val: projGPA.toFixed(2), color: gColDyn(projGPA, scale.max), note: projGPA > cgpa ? `↑ +${(projGPA - cgpa).toFixed(2)}` : projGPA < cgpa ? `↓ ${(projGPA - cgpa).toFixed(2)}` : 'no change', border: 'rgba(232,184,75,0.4)' },
+          { label: 'Current CGPA', val: fmt(cgpa), color: gColDyn(cgpa, scale.max), note: 'from logged data', border: theme.border },
+          { label: 'Projected CGPA', val: fmt(projGPA), color: gColDyn(projGPA, scale.max), note: cgpa != null && projGPA != null ? (projGPA > cgpa ? `↑ +${(projGPA - cgpa).toFixed(2)}` : projGPA < cgpa ? `↓ ${(projGPA - cgpa).toFixed(2)}` : 'no change') : '—', border: 'rgba(232,184,75,0.4)' },
         ].map(({ label, val, color, note, border }) => (
           <div key={label} style={{ flex: 1, minWidth: 140, background: theme.card, border: `2px solid ${border}`, borderRadius: 14, padding: '20px', textAlign: 'center' }}>
             <div style={{ fontSize: 12, color: theme.sub, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8 }}>{label}</div>
@@ -46,7 +46,7 @@ export default function WhatIfView({ scale, theme, allCourses, whatIf, setWhatIf
             <select value={row.grade} onChange={e => setWhatIf(items => items.map(item => item.id === row.id ? { ...item, grade: e.target.value } : item))} style={{ ...inputStyle, width: 96, cursor: 'pointer' }}>
               {scale.grades.map(grade => <option key={grade} value={grade}>{scale.labels?.[grade] ?? grade} ({scale.points[grade]?.toFixed(scale.max >= 10 ? 0 : 1)})</option>)}
             </select>
-            <button onClick={() => setWhatIf(items => items.filter(item => item.id !== row.id))} style={{ width: 28, height: 32, background: 'transparent', border: 'none', cursor: 'pointer', color: '#f87171', fontSize: 18, lineHeight: 1, flexShrink: 0 }}>×</button>
+            <button onClick={() => setWhatIf(items => items.filter(item => item.id !== row.id))} aria-label={`Remove ${row.name || 'course'}`} style={{ width: 28, minHeight: 32, background: 'transparent', border: 'none', cursor: 'pointer', color: '#f87171', fontSize: 18, lineHeight: 1, flexShrink: 0 }}>×</button>
           </div>
         ))}
 

@@ -7,6 +7,38 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// ── In-memory per-user rate limiter ──────────────────────────────────────────
+// NOTE: This is per-instance, not global. Supabase edge functions scale
+// horizontally, so an attacker can distribute requests across instances.
+// For a personal app this is fine. For real durability use Upstash Redis
+// or Supabase's own rate-limit helpers.
+const rateMap = new Map<string, number[]>();
+const RATE_WINDOW_MS = 60_000;
+const RATE_MAX = 10;
+
+const checkRateLimit = (userId: string): boolean => {
+  const now = Date.now();
+  const hits = (rateMap.get(userId) ?? []).filter(t => now - t < RATE_WINDOW_MS);
+  if (hits.length >= RATE_MAX) return false;
+  hits.push(now);
+  rateMap.set(userId, hits);
+  return true;
+};
+
+const extractUserId = (req: Request): string => {
+  const authHeader = req.headers.get('Authorization') ?? '';
+  const jwt = authHeader.replace('Bearer ', '');
+  try {
+    // Supabase's gotrue-style JWT — decode payload to get sub.
+    // No signature verification needed; Supabase gateway already verified it.
+    const payload = JSON.parse(atob(jwt.split('.')[1] ?? ''));
+    return payload.sub ?? 'anon';
+  } catch {
+    return 'anon';
+  }
+};
+
+// ── Schema ───────────────────────────────────────────────────────────────────
 const courseSchema = (grades: string[]) => ({
   type: 'object',
   properties: {
@@ -57,6 +89,15 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    // ── Rate limit ─────────────────────────────────────────────────────────
+    const userId = extractUserId(req);
+    if (!checkRateLimit(userId)) {
+      return new Response(JSON.stringify({ error: 'Too many requests, slow down.' }), {
+        status: 429,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const { imageBase64, mimeType, allowedGrades } = await req.json();
 
     if (!imageBase64 || !allowedGrades || !Array.isArray(allowedGrades)) {
@@ -72,12 +113,15 @@ Deno.serve(async (req: Request) => {
       'You are an expert data extraction assistant. Extract the university module table from the provided image.',
       'Return clean structured rows for the GPA app.',
       'Preserve the original row order perfectly.',
-      'If credits are not visible for a row, omit the credits field entirely.',
+      'If credits are not clearly visible for a row, omit the credits field entirely. Do NOT guess credits — only include them if you are 95%+ confident.',
       'If grades are not visible for a row, omit the grade field entirely.',
       'Grades must use the allowed grade scale exactly. Pay extra close attention to "+" and "-" signs in grades (e.g., A+, B-).',
-      'Return only real module rows, not table headers or decorative text.',
+      'Return only real module rows, not table headers, totals, decorative text, or summary lines.',
       '',
       `Allowed grades: ${allowedGrades.join(', ')}`,
+      '',
+      'Example output:',
+      '{"courses": [{"name": "Introduction to Computer Science", "credits": 3, "grade": "A"}, {"name": "Calculus I", "credits": 4, "grade": "B+"}]}',
     ].join('\n');
 
     const schema = courseSchema(allowedGrades);

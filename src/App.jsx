@@ -8,7 +8,7 @@ import WhatIfView from './views/WhatIfView';
 import { SCALES } from './data/gradeScales';
 import { calcGPA, fmt, gColDyn, normalizeSemesters, semCreds, uid } from './utils/gpa';
 import { loadJSON, saveJSON } from './utils/storage';
-import { getCurrentSession, loadUserData, loginUser, logoutUser, registerUser, saveUserData } from './utils/auth';
+import { getCurrentSession, loadUserData, logoutUser, saveUserData } from './utils/auth';
 import { supabase } from './lib/supabase';
 import { loadUserDataFromSupabase, saveUserDataToSupabase } from './utils/supabaseSync';
 
@@ -37,7 +37,7 @@ export default function App() {
   const scale = SCALES[scaleName];
   const isSupabaseConfigured = Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
 
-  const theme = {
+  const theme = useMemo(() => ({
     bg: dark ? '#0d1117' : '#f5f3ef',
     card: dark ? '#161b27' : '#ffffff',
     border: dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.1)',
@@ -52,7 +52,7 @@ export default function App() {
     red: '#f87171',
     blue: '#60a5fa',
     isDark: dark,
-  };
+  }), [dark]);
 
   useEffect(() => {
     let isMounted = true;
@@ -152,7 +152,10 @@ export default function App() {
         console.error('Failed to hydrate Supabase data', error);
       } finally {
         if (!isCancelled) {
-          // Allow saves only after React has flushed the hydrated state
+          // Allow saves only after React has flushed the hydrated state.
+          // React batches state updates; the rAF waits for the commit so
+          // setSemesters (from hydration) doesn't trip the "user modified" branch
+          // of the auto-save effect.
           requestAnimationFrame(() => {
             if (!isCancelled) {
               isHydratingRef.current = false;
@@ -167,7 +170,7 @@ export default function App() {
     return () => {
       isCancelled = true;
     };
-  }, [currentUser, ready, isSupabaseConfigured, scale.grades]);
+  }, [currentUser, ready, isSupabaseConfigured, scale.grades[0]]);
 
   // ── Local preferences (localStorage only, not Supabase) ─────────────────
   useEffect(() => {
@@ -192,6 +195,7 @@ export default function App() {
       if (isSupabaseConfigured) {
         saveUserDataToSupabase(currentUser.id, { semesters, dark, scaleName, priorGPA, priorCreds }).catch(error => {
           console.error('Failed to sync data to Supabase', error);
+          setSaveStatus({ busy: false, message: 'Save failed — will retry on next change' });
         });
       } else {
         saveUserData(currentUser.id, { semesters, dark, scaleName, priorGPA, priorCreds });
@@ -406,12 +410,12 @@ export default function App() {
             setView={setView}
             theme={theme}
             currentUser={currentUser}
-            onOpenAuth={() => { }}
             onLogout={handleLogout}
             onToggleTheme={() => setDark(value => !value)}
             onToggleSettings={() => setShowSettings(value => !value)}
             showSettings={showSettings}
             onExportCSV={exportCSV}
+            saveStatus={saveStatus}
           />
 
           {showSettings && (
