@@ -6,3 +6,5 @@ node_modules
 vite-dev*.log
 .chrome-check*/
 chrome-check*.png
+scratch_*.js
+payload.json

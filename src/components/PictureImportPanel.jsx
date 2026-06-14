@@ -1,18 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { supabase } from '../lib/supabase';
-
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 
-// Only parse the first candidate's first JSON-looking text part.
-// Using responseMimeType: 'application/json' means the model should return
-// one part that's pure JSON, but future model changes could add thought parts
-// or split across multiple text chunks. This guards against that.
-const extractGeminiText = response => {
-  const parts = response.candidates?.[0]?.content?.parts ?? [];
-  const jsonPart = parts.find(p => p.text && p.text.trim().startsWith('{'));
-  return jsonPart?.text ?? '';
-};
 
 export default function PictureImportPanel({ scale, theme, onImport, onClose }) {
   const rootRef = useRef(null);
@@ -77,14 +66,44 @@ export default function PictureImportPanel({ scale, theme, onImport, onClose }) 
 
     try {
       const base64 = await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let { width, height } = img;
+          const MAX_DIM = 1500;
+          
+          if (width > MAX_DIM || height > MAX_DIM) {
+            if (width > height) {
+              height = Math.round(height * (MAX_DIM / width));
+              width = MAX_DIM;
+            } else {
+              width = Math.round(width * (MAX_DIM / height));
+              height = MAX_DIM;
+            }
+          }
+          
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          // Fill white background in case of transparent PNGs
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, width, height);
+          ctx.drawImage(img, 0, 0, width, height);
+          
+          // Compress to JPEG to save tokens and payload size
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+          resolve(dataUrl.split(',')[1]);
+        };
+        img.onerror = reject;
+        
         const reader = new FileReader();
-        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onload = () => { img.src = reader.result; };
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
       setRawText(base64); // Store base64 for retry
 
-      await analyzeWithAi(base64, file.type);
+      await analyzeWithAi(base64, 'image/jpeg');
     } catch (err) {
       console.error('Picture processing failed', err);
       setError('Could not process that picture. Check your image and try again.');
@@ -93,7 +112,7 @@ export default function PictureImportPanel({ scale, theme, onImport, onClose }) 
     }
   };
 
-  const analyzeWithAi = async (imageBase64 = rawText, mimeType = lastImageRef.current?.type || 'image/jpeg') => {
+  const analyzeWithAi = async (imageBase64 = rawText, mimeType = 'image/jpeg') => {
     if (!imageBase64) return;
     setAiBusy(true);
     setError('');
@@ -101,34 +120,49 @@ export default function PictureImportPanel({ scale, theme, onImport, onClose }) 
     setShowRawResponse(false);
 
     try {
-      if (!supabase) {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      if (!supabaseUrl || !supabaseAnonKey) {
         throw new Error('Supabase is not configured. Please set up Supabase to use the Picture Import feature.');
       }
 
-      const { data: resData, error: invokeError } = await supabase.functions.invoke('analyze-picture', {
-        body: {
+      const fetchUrl = `${supabaseUrl}/functions/v1/analyze-picture`;
+      const response = await fetch(fetchUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseAnonKey}`,
+        },
+        body: JSON.stringify({
           imageBase64,
           mimeType,
           allowedGrades: scale.grades,
-        },
+        }),
       });
 
-      if (invokeError) {
-        throw new Error(invokeError.message || 'Failed to call edge function.');
+      const responseText = await response.text();
+
+      if (!responseText) {
+        throw new Error(`Server returned an empty response (HTTP ${response.status}). The image may be too large — try a smaller picture.`);
+      }
+
+      let resData;
+      try {
+        resData = JSON.parse(responseText);
+      } catch (parseErr) {
+        throw new Error(`Server returned invalid data (HTTP ${response.status}). Try a smaller or clearer picture.`);
       }
 
       if (resData?.error) {
         throw new Error(resData.error);
       }
 
-      const geminiData = resData?.data;
-      if (!geminiData) {
+      const aiData = resData?.data;
+      if (!aiData) {
         throw new Error('No data returned from AI.');
       }
-      const outputText = extractGeminiText(geminiData);
-      setLastRawResponse(outputText);
-      const parsed = JSON.parse(outputText);
-      const nextRows = (parsed.courses ?? [])
+      setLastRawResponse(JSON.stringify(aiData, null, 2));
+      const nextRows = (aiData.courses ?? [])
         .map(course => {
           const gradeInScale = scale.grades.includes(course.grade);
           return {
@@ -146,8 +180,8 @@ export default function PictureImportPanel({ scale, theme, onImport, onClose }) 
       }
       setRows(nextRows);
     } catch (aiError) {
-      console.error('Gemini analysis failed', aiError);
-      setError(aiError.message || 'Gemini analysis failed.');
+      console.error('AI analysis failed', aiError);
+      setError(aiError.message || 'AI analysis failed.');
     } finally {
       setAiBusy(false);
     }
