@@ -35,6 +35,7 @@ export default function PictureImportPanel({ scale, theme, onImport, onClose }) 
     fontSize: 12,
     outline: 'none',
     fontFamily: 'inherit',
+    colorScheme: theme.isDark ? 'dark' : 'light',
   }), [theme]);
 
   const readPicture = async file => {
@@ -150,27 +151,52 @@ export default function PictureImportPanel({ scale, theme, onImport, onClose }) 
       try {
         resData = JSON.parse(responseText);
       } catch (parseErr) {
+        setLastRawResponse(responseText);
         throw new Error(`Server returned invalid data (HTTP ${response.status}). Try a smaller or clearer picture.`);
       }
 
+      if (!response.ok) {
+        const errorMsg = resData?.error || resData?.message || resData?.msg || resData?.detail || `AI analysis failed (HTTP ${response.status}).`;
+        setLastRawResponse(JSON.stringify(resData, null, 2));
+        throw new Error(errorMsg);
+      }
+
       if (resData?.error) {
+        setLastRawResponse(JSON.stringify(resData, null, 2));
         throw new Error(resData.error);
       }
 
-      const aiData = resData?.data;
-      if (!aiData) {
-        throw new Error('No data returned from AI.');
+      let aiData = resData?.data ?? resData;
+      if (typeof aiData === 'string') {
+        try {
+          aiData = JSON.parse(aiData);
+        } catch (_) {}
       }
+
       setLastRawResponse(JSON.stringify(aiData, null, 2));
-      const nextRows = (aiData.courses ?? [])
+
+      const rawCourses = Array.isArray(aiData)
+        ? aiData
+        : (aiData?.courses || aiData?.modules || aiData?.results || []);
+
+      if (!rawCourses || !Array.isArray(rawCourses) || !rawCourses.length) {
+        throw new Error('No course records could be extracted from this image. Please ensure the transcript is clear and upright.');
+      }
+
+      const nextRows = rawCourses
         .map(course => {
-          const gradeInScale = scale.grades.includes(course.grade);
+          const rawGrade = String(course.grade ?? '').trim();
+          const gradeInScale = scale.grades.includes(rawGrade);
+          const creditsVal = course.credits !== undefined && course.credits !== null && course.credits !== ''
+            ? Number(course.credits)
+            : '';
+
           return {
             name: String(course.name ?? '').trim(),
-            credits: course.credits ? Number(course.credits) : '',
-            grade: gradeInScale ? course.grade : '',
+            credits: isNaN(creditsVal) ? '' : creditsVal,
+            grade: gradeInScale ? rawGrade : '',
             // Track if the AI returned a grade that doesn't match the current scale
-            gradeMismatch: (!gradeInScale && course.grade) ? String(course.grade) : '',
+            gradeMismatch: (!gradeInScale && rawGrade) ? rawGrade : '',
           };
         })
         .filter(course => course.name);
@@ -293,10 +319,22 @@ export default function PictureImportPanel({ scale, theme, onImport, onClose }) 
                 <input value={row.name} onChange={event => updateRow(index, { name: event.target.value })} placeholder="Module name" style={{ ...inputStyle, flex: 2, minWidth: 0 }} />
                 <input type="number" min={0.5} max={6} step={0.5} value={row.credits} onChange={event => updateRow(index, { credits: event.target.value })} placeholder="-" style={{ ...inputStyle, width: 66 }} />
                 <div style={{ position: 'relative', width: 94 }}>
-                  <select value={row.grade} onChange={event => updateRow(index, { grade: event.target.value })} style={{ ...inputStyle, width: '100%' }}>
-                    <option value="" disabled>-</option>
+                  <select
+                    value={row.grade}
+                    onChange={event => updateRow(index, { grade: event.target.value })}
+                    style={{
+                      ...inputStyle,
+                      width: '100%',
+                      cursor: 'pointer',
+                      background: theme.card,
+                      color: row.grade ? theme.text : theme.sub
+                    }}
+                  >
+                    <option value="" disabled style={{ background: theme.card, color: theme.sub }}>-</option>
                     {scale.grades.map(grade => (
-                      <option key={grade} value={grade}>{scale.labels?.[grade] ?? grade}</option>
+                      <option key={grade} value={grade} style={{ background: theme.card, color: theme.text }}>
+                        {scale.labels?.[grade] ?? grade}
+                      </option>
                     ))}
                   </select>
                   {/* Grade mismatch warning — AI returned a grade not in the current scale */}

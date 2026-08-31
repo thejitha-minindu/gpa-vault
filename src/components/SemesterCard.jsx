@@ -21,6 +21,7 @@ export default function SemesterCard({ semester, scale, theme, onUpdate, onDelet
     fontSize: 13,
     outline: 'none',
     fontFamily: 'inherit',
+    colorScheme: theme.isDark ? 'dark' : 'light',
   };
 
   const commitName = () => {
@@ -100,9 +101,11 @@ export default function SemesterCard({ semester, scale, theme, onUpdate, onDelet
             <div key={course.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${theme.border}` }}>
               <input placeholder="Course name" value={course.name} onChange={e => onUpdateCourse(course.id, { name: e.target.value })} style={{ ...inputStyle, flex: 2, minWidth: 0 }} />
               <input type="number" value={course.credits} min={0.5} max={6} step={0.5} onChange={e => onUpdateCourse(course.id, { credits: e.target.value })} style={{ ...inputStyle, width: 68 }} />
-              <select value={course.grade} onChange={e => onUpdateCourse(course.id, { grade: e.target.value })} style={{ ...inputStyle, width: 96, cursor: 'pointer' }}>
+              <select value={course.grade} onChange={e => onUpdateCourse(course.id, { grade: e.target.value })} style={{ ...inputStyle, width: 96, cursor: 'pointer', background: theme.card }}>
                 {scale.grades.map(grade => (
-                  <option key={grade} value={grade}>{scale.labels?.[grade] ?? grade} ({scale.points[grade]?.toFixed(scale.max >= 10 ? 0 : 1)})</option>
+                  <option key={grade} value={grade} style={{ background: theme.card, color: theme.text }}>
+                    {scale.labels?.[grade] ?? grade} ({scale.points[grade]?.toFixed(scale.max >= 10 ? 0 : 1)})
+                  </option>
                 ))}
               </select>
               <div style={{ width: 40, textAlign: 'center', fontSize: 13, fontWeight: 600, color: gColDyn(scale.points[course.grade] ?? null, scale.max) }}>

@@ -398,8 +398,14 @@ export default function App() {
   }
 
   return (
-    <div style={{ background: theme.bg, minHeight: '100vh', fontFamily: "'DM Sans', sans-serif", color: theme.text }}>
-      <style>{"@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&display=swap');"}</style>
+    <div style={{ background: theme.bg, minHeight: '100vh', fontFamily: "'DM Sans', sans-serif", color: theme.text, colorScheme: dark ? 'dark' : 'light' }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&display=swap');
+        select option {
+          background-color: ${dark ? '#161b27' : '#ffffff'};
+          color: ${dark ? '#e8e0d0' : '#1f2937'};
+        }
+      `}</style>
 
       {!currentUser ? (
         <AuthModal onGoogleLogin={handleGoogleLogin} isGoogleLoading={googleLoading} error={authError} theme={theme} />

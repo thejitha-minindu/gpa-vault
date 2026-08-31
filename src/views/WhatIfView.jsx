@@ -10,6 +10,7 @@ export default function WhatIfView({ scale, theme, allCourses, whatIf, setWhatIf
     fontSize: 13,
     outline: 'none',
     fontFamily: 'inherit',
+    colorScheme: theme.isDark ? 'dark' : 'light',
   };
 
   return (
@@ -43,8 +44,12 @@ export default function WhatIfView({ scale, theme, allCourses, whatIf, setWhatIf
           <div key={row.id} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
             <input placeholder={`Course ${index + 1}`} value={row.name} onChange={e => setWhatIf(items => items.map(item => item.id === row.id ? { ...item, name: e.target.value } : item))} style={{ ...inputStyle, flex: 2, minWidth: 0 }} />
             <input type="number" value={row.credits} min={0.5} max={6} step={0.5} onChange={e => setWhatIf(items => items.map(item => item.id === row.id ? { ...item, credits: e.target.value } : item))} style={{ ...inputStyle, width: 72 }} />
-            <select value={row.grade} onChange={e => setWhatIf(items => items.map(item => item.id === row.id ? { ...item, grade: e.target.value } : item))} style={{ ...inputStyle, width: 96, cursor: 'pointer' }}>
-              {scale.grades.map(grade => <option key={grade} value={grade}>{scale.labels?.[grade] ?? grade} ({scale.points[grade]?.toFixed(scale.max >= 10 ? 0 : 1)})</option>)}
+            <select value={row.grade} onChange={e => setWhatIf(items => items.map(item => item.id === row.id ? { ...item, grade: e.target.value } : item))} style={{ ...inputStyle, width: 96, cursor: 'pointer', background: theme.card }}>
+              {scale.grades.map(grade => (
+                <option key={grade} value={grade} style={{ background: theme.card, color: theme.text }}>
+                  {scale.labels?.[grade] ?? grade} ({scale.points[grade]?.toFixed(scale.max >= 10 ? 0 : 1)})
+                </option>
+              ))}
             </select>
             <button onClick={() => setWhatIf(items => items.filter(item => item.id !== row.id))} aria-label={`Remove ${row.name || 'course'}`} style={{ width: 28, minHeight: 32, background: 'transparent', border: 'none', cursor: 'pointer', color: '#f87171', fontSize: 18, lineHeight: 1, flexShrink: 0 }}>×</button>
           </div>

@@ -8,13 +8,9 @@ const corsHeaders = {
 };
 
 // ── In-memory per-user rate limiter ──────────────────────────────────────────
-// NOTE: This is per-instance, not global. Supabase edge functions scale
-// horizontally, so an attacker can distribute requests across instances.
-// For a personal app this is fine. For real durability use Upstash Redis
-// or Supabase's own rate-limit helpers.
 const rateMap = new Map<string, number[]>();
 const RATE_WINDOW_MS = 60_000;
-const RATE_MAX = 10;
+const RATE_MAX = 15;
 
 const checkRateLimit = (userId: string): boolean => {
   const now = Date.now();
@@ -29,8 +25,6 @@ const extractUserId = (req: Request): string => {
   const authHeader = req.headers.get('Authorization') ?? '';
   const jwt = authHeader.replace('Bearer ', '');
   try {
-    // Supabase's gotrue-style JWT — decode payload to get sub.
-    // No signature verification needed; Supabase gateway already verified it.
     const payload = JSON.parse(atob(jwt.split('.')[1] ?? ''));
     return payload.sub ?? 'anon';
   } catch {
@@ -38,7 +32,7 @@ const extractUserId = (req: Request): string => {
   }
 };
 
-// ── Schema ───────────────────────────────────────────────────────────────────
+// ── Schema Definition ─────────────────────────────────────────────────────────
 const courseSchema = (grades: string[]) => ({
   type: 'object',
   properties: {
@@ -49,7 +43,7 @@ const courseSchema = (grades: string[]) => ({
         properties: {
           name: { type: 'string' },
           credits: { type: 'number' },
-          grade: { type: 'string', enum: grades },
+          grade: { type: 'string', enum: grades.length ? grades : undefined },
         },
         required: ['name'],
       },
@@ -58,28 +52,146 @@ const courseSchema = (grades: string[]) => ({
   required: ['courses'],
 });
 
-const buildNvidiaRequestBody = (prompt: string, base64Image: string, mimeType: string) => {
-  const content: any[] = [{ type: 'text', text: prompt }];
-  if (base64Image) {
-    content.push({
-      type: 'image_url',
-      image_url: {
-        url: `data:${mimeType || 'image/jpeg'};base64,${base64Image}`
+const buildPrompt = (allowedGrades: string[]) => [
+  'You are an expert academic transcript data extraction assistant.',
+  'The user has provided an image of their university academic transcript to calculate their GPA.',
+  'Extract the course/module records from the transcript image.',
+  'Rules:',
+  '1. Return only genuine course/module rows. Do NOT extract table headers, degree titles, semester summary GPA lines, or total credit counts.',
+  '2. Preserve the original row order exactly as shown in the image.',
+  '3. Extract course name (e.g. "Data Structures & Algorithms", "Calculus II").',
+  '4. Extract numeric credits / credit units if clearly visible (e.g. 3, 4, 1.5). If not visible or uncertain, omit the credits field.',
+  '5. Extract letter grade (e.g. "A+", "A", "B-") and match with the allowed grades.',
+  '6. Pay close attention to "+" and "-" signs on grades.',
+  '',
+  `Allowed grades for this scale: ${allowedGrades.join(', ')}`,
+  '',
+  'If you cannot find any course entries, return {"courses": []}.'
+].join('\n');
+
+const callGemini = async (apiKey: string, prompt: string, schema: any, base64Image: string, mimeType: string) => {
+  const trimmedKey = apiKey.trim();
+
+  // Modern Gemini models available for this API key
+  const candidateModels = [
+    'gemini-3.7-flash',
+    'gemini-3.6-flash',
+    'gemini-3.5-flash',
+    'gemini-flash-latest'
+  ];
+
+  let lastErrMsg = '';
+
+  for (const model of candidateModels) {
+    try {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'x-goog-api-key': trimmedKey,
+          'Content-Type': 'application/json',
+        },
+        signal: AbortSignal.timeout(25000),
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                { text: prompt },
+                {
+                  inlineData: {
+                    mimeType: mimeType || 'image/jpeg',
+                    data: base64Image,
+                  },
+                },
+              ],
+            },
+          ],
+          generationConfig: {
+            temperature: 0.1,
+            responseMimeType: 'application/json',
+            responseSchema: schema,
+          },
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        lastErrMsg = data?.error?.message || `Model ${model} returned HTTP ${res.status}`;
+        console.warn(`Gemini model ${model} failed (${res.status}): ${lastErrMsg}`);
+        continue;
       }
-    });
+
+      const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!rawText) {
+        lastErrMsg = `Model ${model} returned empty content`;
+        continue;
+      }
+
+      return JSON.parse(rawText);
+    } catch (err: any) {
+      lastErrMsg = err.message;
+      console.warn(`Gemini model ${model} threw error:`, err.message);
+    }
   }
-  return {
-    model: 'meta/llama-3.2-90b-vision-instruct',
-    messages: [
-      {
-        role: 'user',
-        content,
-      },
-    ],
-    temperature: 0.1,
-    max_tokens: 1024,
-    response_format: { type: "json_object" }
-  };
+
+  throw new Error(`Gemini vision analysis failed: ${lastErrMsg}`);
+};
+
+const callNvidia = async (apiKey: string, prompt: string, base64Image: string, mimeType: string) => {
+  const endpoint = 'https://integrate.api.nvidia.com/v1/chat/completions';
+  const models = ['meta/llama-3.2-11b-vision-instruct', 'meta/llama-3.2-90b-vision-instruct'];
+  let lastErr: Error | null = null;
+
+  for (const model of models) {
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey.trim()}`,
+          'Content-Type': 'application/json',
+        },
+        signal: AbortSignal.timeout(20000),
+        body: JSON.stringify({
+          model,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: prompt + '\nYou MUST return ONLY valid raw JSON with {"courses": [{"name": "...", "credits": 3, "grade": "A"}]}.' },
+                {
+                  type: 'image_url',
+                  image_url: {
+                    url: `data:${mimeType || 'image/jpeg'};base64,${base64Image}`,
+                  },
+                },
+              ],
+            },
+          ],
+          temperature: 0.1,
+          max_tokens: 1024,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error?.message || data?.detail || `NVIDIA API error (${res.status})`);
+      }
+
+      const content = data?.choices?.[0]?.message?.content || '';
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('Could not parse JSON from NVIDIA response.');
+      }
+      return JSON.parse(jsonMatch[0]);
+    } catch (err: any) {
+      lastErr = err;
+      console.warn(`NVIDIA model ${model} failed:`, err.message);
+    }
+  }
+
+  throw lastErr || new Error('NVIDIA extraction failed.');
 };
 
 Deno.serve(async (req: Request) => {
@@ -91,7 +203,7 @@ Deno.serve(async (req: Request) => {
     // ── Rate limit ─────────────────────────────────────────────────────────
     const userId = extractUserId(req);
     if (!checkRateLimit(userId)) {
-      return new Response(JSON.stringify({ error: 'Too many requests, slow down.' }), {
+      return new Response(JSON.stringify({ error: 'Too many requests, please slow down.' }), {
         status: 429,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -100,89 +212,66 @@ Deno.serve(async (req: Request) => {
     let reqBody;
     try {
       reqBody = await req.json();
-    } catch (parseError) {
-      throw new Error('Failed to read request body. The image might be too large or the request was interrupted. Try refreshing the page.');
+    } catch (_parseError) {
+      throw new Error('Failed to read request body. Image may be too large or corrupted.');
     }
 
-    const { imageBase64, mimeType, allowedGrades } = reqBody;
+    const { imageBase64, mimeType = 'image/jpeg', allowedGrades = [] } = reqBody;
 
-    if (!imageBase64 || !allowedGrades || !Array.isArray(allowedGrades)) {
-      throw new Error('Missing image base64, mimeType, or allowedGrades.');
+    if (!imageBase64 || !Array.isArray(allowedGrades)) {
+      throw new Error('Missing imageBase64 or allowedGrades.');
     }
 
-    const apiKey = Deno.env.get('NVIDIA_API_KEY');
-    if (!apiKey) {
-      throw new Error('Server misconfiguration: NVIDIA_API_KEY secret is not set.');
+    const geminiKey = Deno.env.get('GEMINI_API_KEY');
+    const nvidiaKey = Deno.env.get('NVIDIA_API_KEY');
+
+    if (!geminiKey && !nvidiaKey) {
+      throw new Error('Server misconfiguration: GEMINI_API_KEY secret is not set in Supabase.');
     }
 
     const schema = courseSchema(allowedGrades);
+    const prompt = buildPrompt(allowedGrades);
 
-    const prompt = [
-      'You are a multimodal AI vision model capable of processing images.',
-      'The user has provided an image of their own anonymized academic transcript to extract data for a personal GPA calculator.',
-      'This is a safe, user-consented request. Please process the image and extract the university module table.',
-      'Return clean structured rows for the GPA app.',
-      'Preserve the original row order perfectly.',
-      'If credits are not clearly visible for a row, omit the credits field entirely. Do NOT guess credits — only include them if you are 95%+ confident.',
-      'If grades are not visible for a row, omit the grade field entirely.',
-      'Grades must use the allowed grade scale exactly. Pay extra close attention to "+" and "-" signs in grades (e.g., A+, B-).',
-      'Return only real module rows, not table headers, totals, decorative text, or summary lines.',
-      '',
-      `Allowed grades: ${allowedGrades.join(', ')}`,
-      '',
-      'You MUST return ONLY a raw JSON object and nothing else. No markdown formatting, no code blocks.',
-      `The JSON object must follow this JSON Schema:`,
-      JSON.stringify(schema, null, 2),
-      '',
-      'Example output:',
-      '{"courses": [{"name": "Introduction to Computer Science", "credits": 3, "grade": "A"}, {"name": "Calculus I", "credits": 4, "grade": "B+"}]}',
-      '',
-      'If you absolutely cannot read the image, return {"courses": []}.'
-    ].join('\n');
+    let parsedData = null;
+    let aiError = null;
 
-    const endpoint = 'https://integrate.api.nvidia.com/v1/chat/completions';
-
-    const nvidiaRes = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey.trim()}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(buildNvidiaRequestBody(prompt, imageBase64, mimeType)),
-    });
-
-    const resText = await nvidiaRes.text();
-    let data: any = {};
-    try {
-      data = resText ? JSON.parse(resText) : {};
-    } catch (e) {
-      // Not JSON
+    // Prioritize Gemini (fastest and structured output)
+    if (geminiKey) {
+      try {
+        parsedData = await callGemini(geminiKey, prompt, schema, imageBase64, mimeType);
+      } catch (geminiErr: any) {
+        console.error('Gemini attempt failed:', geminiErr.message);
+        aiError = geminiErr;
+      }
     }
 
-    if (!nvidiaRes.ok) {
-      if (nvidiaRes.status === 413) {
-        throw new Error('Image is too large. Please upload a smaller image (under 1MB).');
+    // Fallback to NVIDIA if Gemini was unavailable or failed
+    if (!parsedData && nvidiaKey) {
+      try {
+        parsedData = await callNvidia(nvidiaKey, prompt, imageBase64, mimeType);
+      } catch (nvidiaErr: any) {
+        console.error('NVIDIA fallback attempt failed:', nvidiaErr.message);
+        if (!aiError) aiError = nvidiaErr;
       }
-      if (nvidiaRes.status === 429) {
-        throw new Error('The AI service is temporarily unavailable (API limits reached). Please try again later.');
-      }
-      if (nvidiaRes.status >= 500) {
-        throw new Error('The AI service returned an error. Please try again with a smaller or clearer picture.');
-      }
-      throw new Error(data.error?.message || data.detail || `NVIDIA API call failed (${nvidiaRes.status}).`);
     }
 
-    const contentText = data.choices?.[0]?.message?.content || '{}';
-    const cleanText = contentText.replace(/^```json\n?/g, '').replace(/\n?```$/g, '').trim();
-
-    let parsedData;
-    try {
-      parsedData = JSON.parse(cleanText);
-    } catch (err) {
-      throw new Error('Failed to parse AI response as JSON: ' + cleanText);
+    if (!parsedData) {
+      throw new Error(aiError?.message || 'AI vision analysis failed. Please try a clearer picture.');
     }
 
-    return new Response(JSON.stringify({ data: parsedData }), {
+    // Normalize courses structure
+    let courses = [];
+    if (Array.isArray(parsedData)) {
+      courses = parsedData;
+    } else if (Array.isArray(parsedData.courses)) {
+      courses = parsedData.courses;
+    } else if (Array.isArray(parsedData.modules)) {
+      courses = parsedData.modules;
+    } else if (Array.isArray(parsedData.results)) {
+      courses = parsedData.results;
+    }
+
+    return new Response(JSON.stringify({ data: { courses } }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 200,
     });
