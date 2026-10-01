@@ -1,10 +1,23 @@
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, CartesianGrid, Tooltip, ResponsiveContainer, XAxis, YAxis, Legend } from 'recharts';
-import { calcGPA, fmt, gColDyn, semCreds } from '../utils/gpa';
+import { fmt, gColDyn, isPendingGrade } from '../utils/gpa';
 
 const DIST_COLORS = ['#34d399', '#6ee7b7', '#fbbf24', '#fb923c', '#f87171', '#ef4444'];
 
-export default function AnalyticsView({ semesters, scale, theme, chartData, allCourses, cgpa, totalCreds, gradeDistData }) {
+export default function AnalyticsView({ scale, theme, chartData, allCourses, cgpa, gradeDistData }) {
   const ttStyle = { background: theme.ttBg, border: `1px solid ${theme.border}`, borderRadius: 8, color: theme.text, fontSize: 13 };
+
+  const pendingCount = allCourses.filter(course => isPendingGrade(course.grade)).length;
+  const gradedCount = allCourses.filter(course => course.grade in scale.points && !isPendingGrade(course.grade)).length;
+
+  const statCards = [
+    { label: 'Cumulative GPA', val: fmt(cgpa), col: gColDyn(cgpa, scale.max) },
+    { label: 'Best semester', val: fmt(Math.max(...chartData.map(item => item.gpa))), col: '#34d399' },
+    { label: 'Worst semester', val: fmt(Math.min(...chartData.map(item => item.gpa))), col: gColDyn(Math.min(...chartData.map(item => item.gpa)), scale.max) },
+    { label: 'Avg credits', val: parseFloat((chartData.reduce((sum, item) => sum + item.credits, 0) / chartData.length).toFixed(1)), col: theme.accent },
+    { label: 'Total courses', val: allCourses.length, col: '#60a5fa' },
+    { label: 'Graded entries', val: gradedCount, col: theme.sub },
+    ...(pendingCount > 0 ? [{ label: 'Pending results', val: pendingCount, col: theme.accent }] : []),
+  ];
 
   return (
     <div>
@@ -18,14 +31,7 @@ export default function AnalyticsView({ semesters, scale, theme, chartData, allC
       ) : (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 12, marginBottom: 14 }}>
-            {[
-              { label: 'Cumulative GPA', val: fmt(cgpa), col: gColDyn(cgpa, scale.max) },
-              { label: 'Best semester', val: fmt(Math.max(...chartData.map(item => item.gpa))), col: '#34d399' },
-              { label: 'Worst semester', val: fmt(Math.min(...chartData.map(item => item.gpa))), col: gColDyn(Math.min(...chartData.map(item => item.gpa)), scale.max) },
-              { label: 'Avg credits', val: parseFloat((chartData.reduce((sum, item) => sum + item.credits, 0) / chartData.length).toFixed(1)), col: theme.accent },
-              { label: 'Total courses', val: allCourses.length, col: '#60a5fa' },
-              { label: 'Graded entries', val: allCourses.filter(course => course.grade in scale.points).length, col: theme.sub },
-            ].map(({ label, val, col: metricColor }) => (
+            {statCards.map(({ label, val, col: metricColor }) => (
               <div key={label} style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 12, padding: '14px 16px' }}>
                 <div style={{ fontSize: 11, color: theme.sub, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>{label}</div>
                 <div style={{ fontSize: 22, fontWeight: 700, color: metricColor, fontFamily: "'Playfair Display',serif" }}>{val}</div>

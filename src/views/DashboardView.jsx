@@ -1,11 +1,16 @@
 import { AreaChart, Area, CartesianGrid, Tooltip, ResponsiveContainer, XAxis, YAxis } from 'recharts';
 import GpaRing from '../components/GpaRing';
-import { calcGPA, fmt, gColDyn, semCreds } from '../utils/gpa';
+import { calcGPA, fmt, gColDyn, isPendingGrade, semCreds, semPendingCreds } from '../utils/gpa';
 
 export default function DashboardView({ semesters, scale, scaleName, theme, priorGPA, priorCreds, chartData, cgpa, cgpaOwn, totalCreds, bestEntry, addSemester, setView }) {
   const col = gColDyn(cgpa, scale.max);
   const colOwn = gColDyn(cgpaOwn, scale.max);
   const ttStyle = { background: theme.ttBg, border: `1px solid ${theme.border}`, borderRadius: 8, color: theme.text, fontSize: 13 };
+
+  const totalPendingCreds = (semesters || [])
+    .flatMap(s => s.courses || [])
+    .filter(c => isPendingGrade(c.grade) && Number(c.credits) > 0)
+    .reduce((sum, c) => sum + Number(c.credits), 0);
 
   return (
     <div>
@@ -21,7 +26,14 @@ export default function DashboardView({ semesters, scale, scaleName, theme, prio
         {[
           { label: 'Cumulative GPA', val: fmt(cgpa), col, sub: priorGPA && priorCreds ? 'incl. prior record' : cgpa ? (cgpa >= scale.max * 0.875 ? 'First Class' : cgpa >= scale.max * 0.75 ? 'Good Standing' : 'Passing') : 'No data' },
           { label: 'Own GPA', val: fmt(cgpaOwn), col: colOwn, sub: 'current semesters only' },
-          { label: 'Total Credits', val: totalCreds || 0, col: theme.accent, sub: `${semesters.length} semester${semesters.length !== 1 ? 's' : ''}` },
+          {
+            label: 'Total Credits',
+            val: totalCreds || 0,
+            col: theme.accent,
+            sub: totalPendingCreds > 0
+              ? `${semesters.length} sem · ${totalPendingCreds} cr pending`
+              : `${semesters.length} semester${semesters.length !== 1 ? 's' : ''}`,
+          },
           { label: 'Best Semester', val: bestEntry ? fmt(bestEntry.gpa) : '—', col: bestEntry ? gColDyn(bestEntry.gpa, scale.max) : theme.sub, sub: bestEntry?.name ?? '—' },
         ].map(({ label, val, col: boxColor, sub }) => (
           <div key={label} style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 14, padding: '16px 18px' }}>
@@ -45,11 +57,17 @@ export default function DashboardView({ semesters, scale, scaleName, theme, prio
           ) : semesters.map(semester => {
             const gpaValue = calcGPA(semester.courses, scale);
             const creditsValue = semCreds(semester, scale.points);
+            const pendingCredits = semPendingCreds(semester);
             return (
               <div key={semester.id} style={{ marginBottom: 10, cursor: 'pointer' }} onClick={() => setView('semesters')}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-                  <span style={{ fontSize: 13, color: theme.text, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '65%' }}>{semester.name}</span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: gColDyn(gpaValue, scale.max) }}>{fmt(gpaValue)} <span style={{ fontSize: 11, color: theme.sub, fontWeight: 400 }}>({creditsValue} cr)</span></span>
+                  <span style={{ fontSize: 13, color: theme.text, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '60%' }}>{semester.name}</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: gColDyn(gpaValue, scale.max) }}>
+                    {fmt(gpaValue)}{' '}
+                    <span style={{ fontSize: 11, color: theme.sub, fontWeight: 400 }}>
+                      ({creditsValue} cr{pendingCredits > 0 ? ` · ${pendingCredits} pending` : ''})
+                    </span>
+                  </span>
                 </div>
                 <div style={{ height: 6, background: theme.grid, borderRadius: 4, overflow: 'hidden' }}>
                   <div style={{ height: '100%', width: `${gpaValue !== null ? (gpaValue / scale.max) * 100 : 0}%`, background: gColDyn(gpaValue, scale.max), borderRadius: 4, transition: 'width 0.5s ease' }} />

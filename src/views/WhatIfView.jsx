@@ -1,4 +1,5 @@
 import { fmt, gColDyn, uid } from '../utils/gpa';
+import GradeSelect from '../components/GradeSelect';
 
 export default function WhatIfView({ scale, theme, allCourses, whatIf, setWhatIf, targetGPA, setTargetGPA, targetCr, setTargetCr, projGPA, targetResult, scaleName, cgpa }) {
   const inputStyle = {
@@ -37,20 +38,20 @@ export default function WhatIfView({ scale, theme, allCourses, whatIf, setWhatIf
         <div style={{ fontSize: 14, fontWeight: 600, color: theme.text, marginBottom: 4 }}>Hypothetical Courses</div>
         <p style={{ color: theme.sub, fontSize: 13, margin: '0 0 14px' }}>Projected CGPA updates live as you add courses.</p>
         <div style={{ display: 'flex', gap: 8, marginBottom: 6, fontSize: 11, color: theme.sub, fontWeight: 500 }}>
-          <span style={{ flex: 2 }}>COURSE NAME</span><span style={{ width: 72 }}>CREDITS</span><span style={{ width: 96 }}>GRADE</span><span style={{ width: 28 }} />
+          <span style={{ flex: 2 }}>COURSE NAME</span><span style={{ width: 72 }}>CREDITS</span><span style={{ width: 152 }}>GRADE</span><span style={{ width: 28 }} />
         </div>
 
         {whatIf.map((row, index) => (
           <div key={row.id} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
             <input placeholder={`Course ${index + 1}`} value={row.name} onChange={e => setWhatIf(items => items.map(item => item.id === row.id ? { ...item, name: e.target.value } : item))} style={{ ...inputStyle, flex: 2, minWidth: 0 }} />
             <input type="number" value={row.credits} min={0.5} max={6} step={0.5} onChange={e => setWhatIf(items => items.map(item => item.id === row.id ? { ...item, credits: e.target.value } : item))} style={{ ...inputStyle, width: 72 }} />
-            <select value={row.grade} onChange={e => setWhatIf(items => items.map(item => item.id === row.id ? { ...item, grade: e.target.value } : item))} style={{ ...inputStyle, width: 96, cursor: 'pointer', background: theme.card }}>
-              {scale.grades.map(grade => (
-                <option key={grade} value={grade} style={{ background: theme.card, color: theme.text }}>
-                  {scale.labels?.[grade] ?? grade} ({scale.points[grade]?.toFixed(scale.max >= 10 ? 0 : 1)})
-                </option>
-              ))}
-            </select>
+            <GradeSelect
+              value={row.grade}
+              onChange={grade => setWhatIf(items => items.map(item => item.id === row.id ? { ...item, grade } : item))}
+              scale={scale}
+              theme={theme}
+              width={152}
+            />
             <button onClick={() => setWhatIf(items => items.filter(item => item.id !== row.id))} aria-label={`Remove ${row.name || 'course'}`} style={{ width: 28, minHeight: 32, background: 'transparent', border: 'none', cursor: 'pointer', color: '#f87171', fontSize: 18, lineHeight: 1, flexShrink: 0 }}>×</button>
           </div>
         ))}

@@ -6,7 +6,7 @@ import SemestersView from './views/SemestersView';
 import AnalyticsView from './views/AnalyticsView';
 import WhatIfView from './views/WhatIfView';
 import { SCALES } from './data/gradeScales';
-import { calcGPA, fmt, gColDyn, normalizeSemesters, semCreds, uid } from './utils/gpa';
+import { calcGPA, fmt, gColDyn, isPendingGrade, normalizeSemesters, PENDING_GRADE, semCreds, semPendingCreds, uid } from './utils/gpa';
 import { loadJSON, saveJSON } from './utils/storage';
 import { getCurrentSession, loadUserData, logoutUser, saveUserData } from './utils/auth';
 import { supabase } from './lib/supabase';
@@ -53,6 +53,11 @@ export default function App() {
     blue: '#60a5fa',
     isDark: dark,
   }), [dark]);
+
+  useEffect(() => {
+    document.body.style.backgroundColor = theme.bg;
+    document.documentElement.style.backgroundColor = theme.bg;
+  }, [theme.bg]);
 
   useEffect(() => {
     let isMounted = true;
@@ -208,7 +213,7 @@ export default function App() {
   const allCourses = useMemo(() => semesters.flatMap(semester => semester.courses), [semesters]);
 
   const calcGPAEff = useCallback((courses) => {
-    const regular = courses.filter(course => course.grade in scale.points && Number(course.credits) > 0);
+    const regular = courses.filter(course => course.grade in scale.points && !isPendingGrade(course.grade) && Number(course.credits) > 0);
     let totalPoints = regular.reduce((sum, course) => sum + scale.points[course.grade] * Number(course.credits), 0);
     let totalCredits = regular.reduce((sum, course) => sum + Number(course.credits), 0);
     const priorGpaValue = parseFloat(priorGPA);
@@ -245,7 +250,7 @@ export default function App() {
     return totalWeightedCredits > 0 ? totalWeightedPoints / totalWeightedCredits : null;
   }, [semesters, scale, priorGPA, priorCreds]);
   const cgpaOwn = useMemo(() => calcGPA(allCourses, scale), [allCourses, scale]);
-  const totalCreds = useMemo(() => allCourses.filter(course => course.grade in scale.points && Number(course.credits) > 0).reduce((sum, course) => sum + Number(course.credits), 0), [allCourses, scale]);
+  const totalCreds = useMemo(() => allCourses.filter(course => course.grade in scale.points && !isPendingGrade(course.grade) && Number(course.credits) > 0).reduce((sum, course) => sum + Number(course.credits), 0), [allCourses, scale]);
 
   const chartData = useMemo(() =>
     semesters.map(semester => {
@@ -262,7 +267,7 @@ export default function App() {
   }, [allCourses, scale]);
 
   const projGPA = useMemo(() => {
-    const hypothetical = whatIf.filter(course => course.grade in scale.points && Number(course.credits) > 0);
+    const hypothetical = whatIf.filter(course => course.grade in scale.points && !isPendingGrade(course.grade) && Number(course.credits) > 0);
     return calcGPAEff([...allCourses, ...hypothetical]);
   }, [allCourses, whatIf, scale, calcGPAEff]);
 
@@ -271,7 +276,7 @@ export default function App() {
     const targetValue = parseFloat(targetGPA);
     if (Number.isNaN(targetValue) || targetValue <= 0 || targetValue > scale.max) return null;
 
-    const existingPoints = allCourses.filter(course => course.grade in scale.points && Number(course.credits) > 0).reduce((sum, course) => sum + scale.points[course.grade] * Number(course.credits), 0);
+    const existingPoints = allCourses.filter(course => course.grade in scale.points && !isPendingGrade(course.grade) && Number(course.credits) > 0).reduce((sum, course) => sum + scale.points[course.grade] * Number(course.credits), 0);
     let existingCredits = totalCreds;
     const priorGpaValue = parseFloat(priorGPA);
     const priorCreditsValue = parseFloat(priorCreds);
@@ -297,7 +302,7 @@ export default function App() {
   const addSemester = () => setSemesters(current => [...current, { id: uid(), name: `Semester ${current.length + 1}`, weight: 1, courses: [] }]);
   const updateSemester = (semesterId, patch) => setSemesters(current => current.map(semester => semester.id === semesterId ? { ...semester, ...patch } : semester));
   const deleteSemester = semesterId => setSemesters(current => current.filter(semester => semester.id !== semesterId));
-  const addCourse = semesterId => setSemesters(current => current.map(semester => semester.id === semesterId ? { ...semester, courses: [...semester.courses, { id: uid(), name: '', credits: 3, grade: scale.grades[0] }] } : semester));
+  const addCourse = semesterId => setSemesters(current => current.map(semester => semester.id === semesterId ? { ...semester, courses: [...semester.courses, { id: uid(), name: '', credits: 3, grade: PENDING_GRADE }] } : semester));
   const updateCourse = (semesterId, courseId, patch) => setSemesters(current => current.map(semester => semester.id === semesterId ? { ...semester, courses: semester.courses.map(course => course.id === courseId ? { ...course, ...patch } : course) } : semester));
   const deleteCourse = (semesterId, courseId) => setSemesters(current => current.map(semester => semester.id === semesterId ? { ...semester, courses: semester.courses.filter(course => course.id !== courseId) } : semester));
   const importCourses = (semesterId, courses, options = {}) => {
@@ -307,7 +312,9 @@ export default function App() {
         id: uid(),
         name: course.name,
         credits: course.credits || 3,
-        grade: scale.grades.includes(course.grade) ? course.grade : scale.grades[0],
+        grade: isPendingGrade(course.grade)
+          ? PENDING_GRADE
+          : (scale.grades.includes(course.grade) ? course.grade : scale.grades[0]),
       }));
       return {
         ...semester,
@@ -401,6 +408,12 @@ export default function App() {
     <div style={{ background: theme.bg, minHeight: '100vh', fontFamily: "'DM Sans', sans-serif", color: theme.text, colorScheme: dark ? 'dark' : 'light' }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&display=swap');
+        html, body {
+          margin: 0;
+          padding: 0;
+          background-color: ${theme.bg};
+          min-height: 100%;
+        }
         select option {
           background-color: ${dark ? '#161b27' : '#ffffff'};
           color: ${dark ? '#e8e0d0' : '#1f2937'};
@@ -452,7 +465,7 @@ export default function App() {
             </div>
           )}
 
-          <div style={{ maxWidth: 880, margin: '0 auto', padding: '28px 16px' }}>
+          <div style={{ maxWidth: 880, margin: '0 auto', padding: '28px 16px 140px' }}>
             {view === 'dashboard' && (
               <DashboardView
                 semesters={semesters}
