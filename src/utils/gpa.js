@@ -1,5 +1,21 @@
 export const uid = () => (crypto?.randomUUID ? crypto.randomUUID() : `id-${Math.random().toString(36).slice(2, 11)}`);
 
+export const PENDING_GRADE = 'Result Pending';
+
+export const isPendingGrade = grade => {
+  if (!grade || typeof grade !== 'string') return false;
+  const normalized = grade.trim().toLowerCase();
+  return (
+    normalized === 'result pending' ||
+    normalized === 'pending' ||
+    normalized === 'in progress' ||
+    normalized === 'awaiting result' ||
+    normalized === 'result awaited' ||
+    normalized === 'ip' ||
+    normalized === 'pr'
+  );
+};
+
 export const normalizeSemesters = (value, fallbackGrade = 'A') => {
   if (!Array.isArray(value)) return [];
 
@@ -30,8 +46,8 @@ export const gColDyn = (g, max) => {
 };
 
 export const calcGPA = (courses, scale) => {
-  const pts = scale.points;
-  const valid = courses.filter(c => c.grade in pts && Number(c.credits) > 0);
+  const pts = scale?.points || {};
+  const valid = (courses || []).filter(c => c.grade in pts && !isPendingGrade(c.grade) && Number(c.credits) > 0);
   if (!valid.length) return null;
   const totalPoints = valid.reduce((sum, c) => sum + pts[c.grade] * Number(c.credits), 0);
   const totalCredits = valid.reduce((sum, c) => sum + Number(c.credits), 0);
@@ -39,4 +55,11 @@ export const calcGPA = (courses, scale) => {
 };
 
 export const semCreds = (semester, points) =>
-  semester.courses.filter(c => c.grade in points && Number(c.credits) > 0).reduce((sum, c) => sum + Number(c.credits), 0);
+  (semester?.courses || [])
+    .filter(c => c.grade in (points || {}) && !isPendingGrade(c.grade) && Number(c.credits) > 0)
+    .reduce((sum, c) => sum + Number(c.credits), 0);
+
+export const semPendingCreds = semester =>
+  (semester?.courses || [])
+    .filter(c => isPendingGrade(c.grade) && Number(c.credits) > 0)
+    .reduce((sum, c) => sum + Number(c.credits), 0);

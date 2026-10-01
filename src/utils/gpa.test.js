@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calcGPA, fmt, gColDyn, normalizeSemesters, semCreds, uid } from './gpa';
+import { calcGPA, fmt, gColDyn, isPendingGrade, normalizeSemesters, PENDING_GRADE, semCreds, semPendingCreds, uid } from './gpa';
 
 // ── Scale fixtures ───────────────────────────────────────────────────────────
 const SCALE_4_0 = {
@@ -85,6 +85,39 @@ describe('gColDyn', () => {
   });
 });
 
+// ── PENDING_GRADE & isPendingGrade ───────────────────────────────────────────
+describe('PENDING_GRADE and isPendingGrade', () => {
+  it('defines PENDING_GRADE constant', () => {
+    expect(PENDING_GRADE).toBe('Result Pending');
+  });
+
+  it('identifies standard pending aliases', () => {
+    expect(isPendingGrade('Result Pending')).toBe(true);
+    expect(isPendingGrade('result pending')).toBe(true);
+    expect(isPendingGrade('Pending')).toBe(true);
+    expect(isPendingGrade('pending')).toBe(true);
+    expect(isPendingGrade('In Progress')).toBe(true);
+    expect(isPendingGrade('in progress')).toBe(true);
+    expect(isPendingGrade('Awaiting Result')).toBe(true);
+    expect(isPendingGrade('Result Awaited')).toBe(true);
+    expect(isPendingGrade('IP')).toBe(true);
+    expect(isPendingGrade('PR')).toBe(true);
+    expect(isPendingGrade('  Result Pending  ')).toBe(true);
+  });
+
+  it('returns false for graded entries and invalid inputs', () => {
+    expect(isPendingGrade('A+')).toBe(false);
+    expect(isPendingGrade('A')).toBe(false);
+    expect(isPendingGrade('B')).toBe(false);
+    expect(isPendingGrade('F')).toBe(false);
+    expect(isPendingGrade('I')).toBe(false);
+    expect(isPendingGrade('')).toBe(false);
+    expect(isPendingGrade(null)).toBe(false);
+    expect(isPendingGrade(undefined)).toBe(false);
+    expect(isPendingGrade(123)).toBe(false);
+  });
+});
+
 // ── calcGPA ──────────────────────────────────────────────────────────────────
 describe('calcGPA', () => {
   it('returns null for empty courses', () => {
@@ -93,6 +126,15 @@ describe('calcGPA', () => {
 
   it('returns null when no course has a valid grade', () => {
     const courses = [{ name: 'X', credits: 3, grade: 'Z' }];
+    expect(calcGPA(courses, SCALE_4_0)).toBeNull();
+  });
+
+  it('returns null when all courses have pending results', () => {
+    const courses = [
+      { name: 'CS101', credits: 3, grade: PENDING_GRADE },
+      { name: 'MA101', credits: 4, grade: 'Pending' },
+      { name: 'PH101', credits: 3, grade: 'In Progress' },
+    ];
     expect(calcGPA(courses, SCALE_4_0)).toBeNull();
   });
 
@@ -107,6 +149,18 @@ describe('calcGPA', () => {
       { name: 'English', credits: 3, grade: 'B' }, // 3.0 * 3 = 9
     ];
     // (12 + 9) / 6 = 3.5
+    expect(calcGPA(courses, SCALE_4_0)).toBe(3.5);
+  });
+
+  it('completely excludes pending courses from GPA calculation', () => {
+    const courses = [
+      { name: 'Math', credits: 3, grade: 'A' },               // 4.0 * 3 = 12
+      { name: 'English', credits: 3, grade: 'B' },            // 3.0 * 3 = 9
+      { name: 'Physics', credits: 4, grade: PENDING_GRADE },  // ignored!
+      { name: 'Chemistry', credits: 3, grade: 'Pending' },    // ignored!
+    ];
+    // Only Math and English count: (12 + 9) / 6 = 3.50
+    // Unlike F (which would drag GPA down to 21/13 = 1.61), pending courses do not drop the GPA.
     expect(calcGPA(courses, SCALE_4_0)).toBe(3.5);
   });
 
@@ -170,11 +224,12 @@ describe('semCreds', () => {
     expect(semCreds(semester, SCALE_4_0.points)).toBe(7);
   });
 
-  it('ignores courses with unknown grades', () => {
+  it('ignores courses with unknown grades and pending grades', () => {
     const semester = {
       courses: [
         { name: 'A', credits: 3, grade: 'A' },
         { name: 'X', credits: 3, grade: 'Z' },
+        { name: 'P', credits: 4, grade: PENDING_GRADE },
       ],
     };
     expect(semCreds(semester, SCALE_4_0.points)).toBe(3);
@@ -188,6 +243,36 @@ describe('semCreds', () => {
       ],
     };
     expect(semCreds(semester, SCALE_4_0.points)).toBe(3);
+  });
+});
+
+// ── semPendingCreds ──────────────────────────────────────────────────────────
+describe('semPendingCreds', () => {
+  it('returns 0 when there are no courses or no pending courses', () => {
+    expect(semPendingCreds({ courses: [] })).toBe(0);
+    expect(semPendingCreds({ courses: [{ name: 'A', credits: 3, grade: 'A' }] })).toBe(0);
+  });
+
+  it('sums credits of pending courses', () => {
+    const semester = {
+      courses: [
+        { name: 'A', credits: 3, grade: 'A' },
+        { name: 'B', credits: 4, grade: PENDING_GRADE },
+        { name: 'C', credits: 2, grade: 'Pending' },
+      ],
+    };
+    expect(semPendingCreds(semester)).toBe(6);
+  });
+
+  it('ignores pending courses with zero or negative credits', () => {
+    const semester = {
+      courses: [
+        { name: 'A', credits: 0, grade: PENDING_GRADE },
+        { name: 'B', credits: -3, grade: PENDING_GRADE },
+        { name: 'C', credits: 3, grade: PENDING_GRADE },
+      ],
+    };
+    expect(semPendingCreds(semester)).toBe(3);
   });
 });
 
@@ -236,6 +321,11 @@ describe('normalizeSemesters', () => {
   it('defaults course grade to fallback parameter', () => {
     const result = normalizeSemesters([{ name: 'S1', courses: [{ name: 'Math' }] }], 'B+');
     expect(result[0].courses[0].grade).toBe('B+');
+  });
+
+  it('preserves pending grade on course', () => {
+    const result = normalizeSemesters([{ name: 'S1', courses: [{ name: 'Math', credits: 3, grade: PENDING_GRADE }] }]);
+    expect(result[0].courses[0].grade).toBe(PENDING_GRADE);
   });
 
   it('defaults course name to empty string when missing', () => {

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { isPendingGrade, PENDING_GRADE } from '../utils/gpa';
 
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 
@@ -186,7 +187,8 @@ export default function PictureImportPanel({ scale, theme, onImport, onClose }) 
       const nextRows = rawCourses
         .map(course => {
           const rawGrade = String(course.grade ?? '').trim();
-          const gradeInScale = scale.grades.includes(rawGrade);
+          const isPending = isPendingGrade(rawGrade);
+          const gradeInScale = scale.grades.includes(rawGrade) || isPending;
           const creditsVal = course.credits !== undefined && course.credits !== null && course.credits !== ''
             ? Number(course.credits)
             : '';
@@ -194,7 +196,7 @@ export default function PictureImportPanel({ scale, theme, onImport, onClose }) 
           return {
             name: String(course.name ?? '').trim(),
             credits: isNaN(creditsVal) ? '' : creditsVal,
-            grade: gradeInScale ? rawGrade : '',
+            grade: isPending ? PENDING_GRADE : (gradeInScale ? rawGrade : ''),
             // Track if the AI returned a grade that doesn't match the current scale
             gradeMismatch: (!gradeInScale && rawGrade) ? rawGrade : '',
           };
@@ -310,7 +312,7 @@ export default function PictureImportPanel({ scale, theme, onImport, onClose }) 
           <div style={{ display: 'flex', gap: 8, marginBottom: 6, color: theme.sub, fontSize: 10, fontWeight: 600 }}>
             <span style={{ flex: 2 }}>MODULE</span>
             <span style={{ width: 66 }}>CREDITS</span>
-            <span style={{ width: 94 }}>GRADE</span>
+            <span style={{ width: 116 }}>GRADE</span>
             <span style={{ width: 26 }} />
           </div>
           <div style={{ maxHeight: 220, overflow: 'auto', paddingRight: 2 }}>
@@ -318,19 +320,24 @@ export default function PictureImportPanel({ scale, theme, onImport, onClose }) 
               <div key={`${row.name}-${index}`} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
                 <input value={row.name} onChange={event => updateRow(index, { name: event.target.value })} placeholder="Module name" style={{ ...inputStyle, flex: 2, minWidth: 0 }} />
                 <input type="number" min={0.5} max={6} step={0.5} value={row.credits} onChange={event => updateRow(index, { credits: event.target.value })} placeholder="-" style={{ ...inputStyle, width: 66 }} />
-                <div style={{ position: 'relative', width: 94 }}>
+                <div style={{ position: 'relative', width: 116 }}>
                   <select
-                    value={row.grade}
+                    value={isPendingGrade(row.grade) ? PENDING_GRADE : row.grade}
                     onChange={event => updateRow(index, { grade: event.target.value })}
                     style={{
                       ...inputStyle,
                       width: '100%',
                       cursor: 'pointer',
                       background: theme.card,
-                      color: row.grade ? theme.text : theme.sub
+                      color: isPendingGrade(row.grade) ? theme.accent : (row.grade ? theme.text : theme.sub),
+                      fontWeight: isPendingGrade(row.grade) ? 600 : 400,
+                      borderColor: isPendingGrade(row.grade) ? 'rgba(232,184,75,0.45)' : theme.border,
                     }}
                   >
                     <option value="" disabled style={{ background: theme.card, color: theme.sub }}>-</option>
+                    <option value={PENDING_GRADE} style={{ background: theme.card, color: theme.accent, fontWeight: 600 }}>
+                      ⏳ Result Pending
+                    </option>
                     {scale.grades.map(grade => (
                       <option key={grade} value={grade} style={{ background: theme.card, color: theme.text }}>
                         {scale.labels?.[grade] ?? grade}
