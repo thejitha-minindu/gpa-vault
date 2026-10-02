@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { isNonGpaGrade, NON_GPA_GRADE } from './gpa';
 
 const serializeProfile = ({ dark, scaleName, priorGPA, priorCreds, userId }) => ({
   id: userId,
@@ -25,12 +26,26 @@ export const loadUserDataFromSupabase = async userId => {
     courses: (courseRows ?? [])
       .filter(course => course.semester_id === row.id)
       .sort((a, b) => Number(a.order_index) - Number(b.order_index))
-      .map(course => ({
-        id: course.local_id,
-        name: course.name,
-        credits: Number(course.credits),
-        grade: course.grade,
-      })),
+      .map(course => {
+        const rawGrade = course.grade || '';
+        const hasNonGpaTag = rawGrade.includes('(Non-GPA)');
+        const isNonGpa = Boolean(
+          hasNonGpaTag ||
+          isNonGpaGrade(rawGrade)
+        );
+        let grade = rawGrade;
+        if (hasNonGpaTag) {
+          const stripped = rawGrade.replace('(Non-GPA)', '').trim();
+          grade = stripped || NON_GPA_GRADE;
+        }
+        return {
+          id: course.local_id,
+          name: course.name,
+          credits: Number(course.credits),
+          grade,
+          isNonGpa,
+        };
+      }),
   }));
 
   return {
@@ -82,13 +97,20 @@ export const saveUserDataToSupabase = async (userId, { semesters, dark, scaleNam
         throw new Error(`Failed to map semester ${semester.id} to a persisted database row`);
       }
 
+      let grade = course.grade || '';
+      if (course.isNonGpa) {
+        if (!grade.includes('(Non-GPA)') && grade !== NON_GPA_GRADE) {
+          grade = `${grade} (Non-GPA)`.trim();
+        }
+      }
+
       return {
         user_id: userId,
         local_id: course.id,
         semester_id: semesterId,
         name: course.name,
         credits: Number(course.credits),
-        grade: course.grade,
+        grade,
         order_index: courseIndex,
         updated_at: new Date().toISOString(),
       };
