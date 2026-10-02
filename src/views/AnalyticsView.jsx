@@ -1,13 +1,14 @@
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, CartesianGrid, Tooltip, ResponsiveContainer, XAxis, YAxis, Legend } from 'recharts';
-import { fmt, gColDyn, isPendingGrade } from '../utils/gpa';
+import { fmt, gColDyn, isNonGpaCourse, isPendingGrade } from '../utils/gpa';
 
 const DIST_COLORS = ['#34d399', '#6ee7b7', '#fbbf24', '#fb923c', '#f87171', '#ef4444'];
 
 export default function AnalyticsView({ scale, theme, chartData, allCourses, cgpa, gradeDistData }) {
   const ttStyle = { background: theme.ttBg, border: `1px solid ${theme.border}`, borderRadius: 8, color: theme.text, fontSize: 13 };
 
-  const pendingCount = allCourses.filter(course => isPendingGrade(course.grade)).length;
-  const gradedCount = allCourses.filter(course => course.grade in scale.points && !isPendingGrade(course.grade)).length;
+  const nonGpaCount = allCourses.filter(course => isNonGpaCourse(course)).length;
+  const pendingCount = allCourses.filter(course => !isNonGpaCourse(course) && isPendingGrade(course.grade)).length;
+  const gradedCount = allCourses.filter(course => !isNonGpaCourse(course) && course.grade in scale.points && !isPendingGrade(course.grade)).length;
 
   const statCards = [
     { label: 'Cumulative GPA', val: fmt(cgpa), col: gColDyn(cgpa, scale.max) },
@@ -16,6 +17,7 @@ export default function AnalyticsView({ scale, theme, chartData, allCourses, cgp
     { label: 'Avg credits', val: parseFloat((chartData.reduce((sum, item) => sum + item.credits, 0) / chartData.length).toFixed(1)), col: theme.accent },
     { label: 'Total courses', val: allCourses.length, col: '#60a5fa' },
     { label: 'Graded entries', val: gradedCount, col: theme.sub },
+    ...(nonGpaCount > 0 ? [{ label: 'Non-GPA modules', val: nonGpaCount, col: '#a78bfa' }] : []),
     ...(pendingCount > 0 ? [{ label: 'Pending results', val: pendingCount, col: theme.accent }] : []),
   ];
 

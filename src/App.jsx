@@ -6,7 +6,21 @@ import SemestersView from './views/SemestersView';
 import AnalyticsView from './views/AnalyticsView';
 import WhatIfView from './views/WhatIfView';
 import { SCALES } from './data/gradeScales';
-import { calcGPA, fmt, gColDyn, isPendingGrade, normalizeSemesters, PENDING_GRADE, semCreds, semPendingCreds, uid } from './utils/gpa';
+import {
+  calcGPA,
+  fmt,
+  gColDyn,
+  isNonGpaCourse,
+  isNonGpaGrade,
+  isPendingGrade,
+  NON_GPA_GRADE,
+  normalizeSemesters,
+  PENDING_GRADE,
+  semCreds,
+  semNonGpaCreds,
+  semPendingCreds,
+  uid
+} from './utils/gpa';
 import { loadJSON, saveJSON } from './utils/storage';
 import { getCurrentSession, loadUserData, logoutUser, saveUserData } from './utils/auth';
 import { supabase } from './lib/supabase';
@@ -213,7 +227,7 @@ export default function App() {
   const allCourses = useMemo(() => semesters.flatMap(semester => semester.courses), [semesters]);
 
   const calcGPAEff = useCallback((courses) => {
-    const regular = courses.filter(course => course.grade in scale.points && !isPendingGrade(course.grade) && Number(course.credits) > 0);
+    const regular = courses.filter(course => !isNonGpaCourse(course) && course.grade in scale.points && !isPendingGrade(course.grade) && Number(course.credits) > 0);
     let totalPoints = regular.reduce((sum, course) => sum + scale.points[course.grade] * Number(course.credits), 0);
     let totalCredits = regular.reduce((sum, course) => sum + Number(course.credits), 0);
     const priorGpaValue = parseFloat(priorGPA);
@@ -250,7 +264,8 @@ export default function App() {
     return totalWeightedCredits > 0 ? totalWeightedPoints / totalWeightedCredits : null;
   }, [semesters, scale, priorGPA, priorCreds]);
   const cgpaOwn = useMemo(() => calcGPA(allCourses, scale), [allCourses, scale]);
-  const totalCreds = useMemo(() => allCourses.filter(course => course.grade in scale.points && !isPendingGrade(course.grade) && Number(course.credits) > 0).reduce((sum, course) => sum + Number(course.credits), 0), [allCourses, scale]);
+  const totalCreds = useMemo(() => allCourses.filter(course => !isNonGpaCourse(course) && course.grade in scale.points && !isPendingGrade(course.grade) && Number(course.credits) > 0).reduce((sum, course) => sum + Number(course.credits), 0), [allCourses, scale]);
+  const totalNonGpaCreds = useMemo(() => allCourses.filter(course => isNonGpaCourse(course) && Number(course.credits) > 0).reduce((sum, course) => sum + Number(course.credits), 0), [allCourses]);
 
   const chartData = useMemo(() =>
     semesters.map(semester => {
@@ -262,12 +277,14 @@ export default function App() {
   const gradeDistData = useMemo(() => {
     const counts = {};
     scale.grades.forEach(grade => { counts[grade] = 0; });
-    allCourses.forEach(course => { if (course.grade in counts) counts[course.grade] += 1; });
+    allCourses.forEach(course => {
+      if (!isNonGpaCourse(course) && course.grade in counts) counts[course.grade] += 1;
+    });
     return scale.grades.filter(grade => counts[grade] > 0).map(grade => ({ name: scale.labels?.[grade] ?? grade, value: counts[grade] }));
   }, [allCourses, scale]);
 
   const projGPA = useMemo(() => {
-    const hypothetical = whatIf.filter(course => course.grade in scale.points && !isPendingGrade(course.grade) && Number(course.credits) > 0);
+    const hypothetical = whatIf.filter(course => !isNonGpaCourse(course) && course.grade in scale.points && !isPendingGrade(course.grade) && Number(course.credits) > 0);
     return calcGPAEff([...allCourses, ...hypothetical]);
   }, [allCourses, whatIf, scale, calcGPAEff]);
 
@@ -276,7 +293,7 @@ export default function App() {
     const targetValue = parseFloat(targetGPA);
     if (Number.isNaN(targetValue) || targetValue <= 0 || targetValue > scale.max) return null;
 
-    const existingPoints = allCourses.filter(course => course.grade in scale.points && !isPendingGrade(course.grade) && Number(course.credits) > 0).reduce((sum, course) => sum + scale.points[course.grade] * Number(course.credits), 0);
+    const existingPoints = allCourses.filter(course => !isNonGpaCourse(course) && course.grade in scale.points && !isPendingGrade(course.grade) && Number(course.credits) > 0).reduce((sum, course) => sum + scale.points[course.grade] * Number(course.credits), 0);
     let existingCredits = totalCreds;
     const priorGpaValue = parseFloat(priorGPA);
     const priorCreditsValue = parseFloat(priorCreds);
@@ -302,20 +319,27 @@ export default function App() {
   const addSemester = () => setSemesters(current => [...current, { id: uid(), name: `Semester ${current.length + 1}`, weight: 1, courses: [] }]);
   const updateSemester = (semesterId, patch) => setSemesters(current => current.map(semester => semester.id === semesterId ? { ...semester, ...patch } : semester));
   const deleteSemester = semesterId => setSemesters(current => current.filter(semester => semester.id !== semesterId));
-  const addCourse = semesterId => setSemesters(current => current.map(semester => semester.id === semesterId ? { ...semester, courses: [...semester.courses, { id: uid(), name: '', credits: 3, grade: PENDING_GRADE }] } : semester));
+  const addCourse = semesterId => setSemesters(current => current.map(semester => semester.id === semesterId ? { ...semester, courses: [...semester.courses, { id: uid(), name: '', credits: 3, grade: PENDING_GRADE, isNonGpa: false }] } : semester));
+  const addNonGpaCourse = semesterId => setSemesters(current => current.map(semester => semester.id === semesterId ? { ...semester, courses: [...semester.courses, { id: uid(), name: '', credits: 2, grade: NON_GPA_GRADE, isNonGpa: true }] } : semester));
   const updateCourse = (semesterId, courseId, patch) => setSemesters(current => current.map(semester => semester.id === semesterId ? { ...semester, courses: semester.courses.map(course => course.id === courseId ? { ...course, ...patch } : course) } : semester));
   const deleteCourse = (semesterId, courseId) => setSemesters(current => current.map(semester => semester.id === semesterId ? { ...semester, courses: semester.courses.filter(course => course.id !== courseId) } : semester));
   const importCourses = (semesterId, courses, options = {}) => {
     setSemesters(current => current.map(semester => {
       if (semester.id !== semesterId) return semester;
-      const importedCourses = courses.map(course => ({
-        id: uid(),
-        name: course.name,
-        credits: course.credits || 3,
-        grade: isPendingGrade(course.grade)
-          ? PENDING_GRADE
-          : (scale.grades.includes(course.grade) ? course.grade : scale.grades[0]),
-      }));
+      const importedCourses = courses.map(course => {
+        const isNonGpa = Boolean(course.isNonGpa || isNonGpaGrade(course.grade));
+        return {
+          id: uid(),
+          name: course.name,
+          credits: course.credits || 3,
+          grade: isPendingGrade(course.grade)
+            ? PENDING_GRADE
+            : isNonGpa
+            ? NON_GPA_GRADE
+            : (scale.grades.includes(course.grade) ? course.grade : scale.grades[0]),
+          isNonGpa,
+        };
+      });
       return {
         ...semester,
         courses: options.replaceExisting ? importedCourses : [...semester.courses, ...importedCourses],
@@ -345,7 +369,20 @@ export default function App() {
   }, [currentUser, dark, isSupabaseConfigured, priorCreds, priorGPA, scaleName, semesters]);
 
   const exportCSV = () => {
-    const rows = [['Semester', 'Course', 'Credits', 'Grade', 'Grade Points'], ...semesters.flatMap(semester => semester.courses.map(course => [semester.name, `"${course.name}"`, course.credits, course.grade, scale.points[course.grade] ?? '']))];
+    const rows = [
+      ['Semester', 'Course', 'Credits', 'Type', 'Grade', 'Grade Points'],
+      ...semesters.flatMap(semester => semester.courses.map(course => {
+        const nonGpa = isNonGpaCourse(course);
+        return [
+          semester.name,
+          `"${course.name}"`,
+          course.credits,
+          nonGpa ? 'Non-GPA' : 'GPA',
+          course.grade,
+          nonGpa ? 'N/A' : (scale.points[course.grade] ?? '')
+        ];
+      }))
+    ];
     const blob = new Blob([rows.map(row => row.join(',')).join('\n')], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -421,7 +458,13 @@ export default function App() {
       `}</style>
 
       {!currentUser ? (
-        <AuthModal onGoogleLogin={handleGoogleLogin} isGoogleLoading={googleLoading} error={authError} theme={theme} />
+        <AuthModal
+          onGoogleLogin={handleGoogleLogin}
+          onContinueAsGuest={() => setCurrentUser({ id: 'guest-user', email: 'Guest' })}
+          isGoogleLoading={googleLoading}
+          error={authError}
+          theme={theme}
+        />
       ) : (
         <>
           <TopNav
@@ -478,6 +521,7 @@ export default function App() {
                 cgpa={cgpa}
                 cgpaOwn={cgpaOwn}
                 totalCreds={totalCreds}
+                totalNonGpaCreds={totalNonGpaCreds}
                 bestEntry={bestEntry}
                 addSemester={addSemester}
                 setView={setView}
@@ -494,6 +538,7 @@ export default function App() {
                 updateSemester={updateSemester}
                 deleteSemester={deleteSemester}
                 addCourse={addCourse}
+                addNonGpaCourse={addNonGpaCourse}
                 updateCourse={updateCourse}
                 deleteCourse={deleteCourse}
                 importCourses={importCourses}

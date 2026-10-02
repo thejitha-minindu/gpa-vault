@@ -1,15 +1,15 @@
 import { AreaChart, Area, CartesianGrid, Tooltip, ResponsiveContainer, XAxis, YAxis } from 'recharts';
 import GpaRing from '../components/GpaRing';
-import { calcGPA, fmt, gColDyn, isPendingGrade, semCreds, semPendingCreds } from '../utils/gpa';
+import { calcGPA, fmt, gColDyn, isNonGpaCourse, isPendingGrade, semCreds, semNonGpaCreds, semPendingCreds } from '../utils/gpa';
 
-export default function DashboardView({ semesters, scale, scaleName, theme, priorGPA, priorCreds, chartData, cgpa, cgpaOwn, totalCreds, bestEntry, addSemester, setView }) {
+export default function DashboardView({ semesters, scale, scaleName, theme, priorGPA, priorCreds, chartData, cgpa, cgpaOwn, totalCreds, totalNonGpaCreds = 0, bestEntry, addSemester, setView }) {
   const col = gColDyn(cgpa, scale.max);
   const colOwn = gColDyn(cgpaOwn, scale.max);
   const ttStyle = { background: theme.ttBg, border: `1px solid ${theme.border}`, borderRadius: 8, color: theme.text, fontSize: 13 };
 
   const totalPendingCreds = (semesters || [])
     .flatMap(s => s.courses || [])
-    .filter(c => isPendingGrade(c.grade) && Number(c.credits) > 0)
+    .filter(c => !isNonGpaCourse(c) && isPendingGrade(c.grade) && Number(c.credits) > 0)
     .reduce((sum, c) => sum + Number(c.credits), 0);
 
   return (
@@ -28,11 +28,12 @@ export default function DashboardView({ semesters, scale, scaleName, theme, prio
           { label: 'Own GPA', val: fmt(cgpaOwn), col: colOwn, sub: 'current semesters only' },
           {
             label: 'Total Credits',
-            val: totalCreds || 0,
+            val: (totalCreds || 0) + (totalNonGpaCreds || 0),
             col: theme.accent,
-            sub: totalPendingCreds > 0
-              ? `${semesters.length} sem · ${totalPendingCreds} cr pending`
-              : `${semesters.length} semester${semesters.length !== 1 ? 's' : ''}`,
+            sub: [
+              totalNonGpaCreds > 0 ? `${totalCreds} GPA + ${totalNonGpaCreds} non-GPA` : `${semesters.length} semester${semesters.length !== 1 ? 's' : ''}`,
+              totalPendingCreds > 0 ? `${totalPendingCreds} pending` : null,
+            ].filter(Boolean).join(' · '),
           },
           { label: 'Best Semester', val: bestEntry ? fmt(bestEntry.gpa) : '—', col: bestEntry ? gColDyn(bestEntry.gpa, scale.max) : theme.sub, sub: bestEntry?.name ?? '—' },
         ].map(({ label, val, col: boxColor, sub }) => (
@@ -58,6 +59,7 @@ export default function DashboardView({ semesters, scale, scaleName, theme, prio
             const gpaValue = calcGPA(semester.courses, scale);
             const creditsValue = semCreds(semester, scale.points);
             const pendingCredits = semPendingCreds(semester);
+            const nonGpaCredits = semNonGpaCreds(semester);
             return (
               <div key={semester.id} style={{ marginBottom: 10, cursor: 'pointer' }} onClick={() => setView('semesters')}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
@@ -65,7 +67,7 @@ export default function DashboardView({ semesters, scale, scaleName, theme, prio
                   <span style={{ fontSize: 13, fontWeight: 700, color: gColDyn(gpaValue, scale.max) }}>
                     {fmt(gpaValue)}{' '}
                     <span style={{ fontSize: 11, color: theme.sub, fontWeight: 400 }}>
-                      ({creditsValue} cr{pendingCredits > 0 ? ` · ${pendingCredits} pending` : ''})
+                      ({creditsValue} cr{nonGpaCredits > 0 ? ` · ${nonGpaCredits} non-GPA` : ''}{pendingCredits > 0 ? ` · ${pendingCredits} pending` : ''})
                     </span>
                   </span>
                 </div>

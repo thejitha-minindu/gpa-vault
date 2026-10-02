@@ -1,0 +1,44 @@
+<svg viewBox="0 0 100 112" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="goldGradLogo" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFF2C6" />
+      <stop offset="35%" stop-color="#F5C056" />
+      <stop offset="70%" stop-color="#E8B84B" />
+      <stop offset="100%" stop-color="#AC7718" />
+    </linearGradient>
+    <linearGradient id="shieldBgLogo" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1F283D" />
+      <stop offset="50%" stop-color="#141B2B" />
+      <stop offset="100%" stop-color="#0B0F19" />
+    </linearGradient>
+    <filter id="crestGlowLogo" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#E8B84B" flood-opacity="0.3" />
+    </filter>
+  </defs>
+
+  <path d="M50 4 C68 4 92 11 92 22 C92 64 74 92 50 108 C26 92 8 64 8 22 C8 11 32 4 50 4 Z" 
+        fill="url(#shieldBgLogo)" stroke="url(#goldGradLogo)" stroke-width="3.5" stroke-linejoin="round" filter="url(#crestGlowLogo)" />
+
+  <path d="M50 12 C65 12 84 17 84 26 C84 62 68 86 50 99 C32 86 16 62 16 26 C16 17 35 12 50 12 Z" 
+        fill="none" stroke="url(#goldGradLogo)" stroke-width="1.2" stroke-opacity="0.5" stroke-dasharray="3 2" />
+
+  <path d="M50 22 L77 33 L50 44 L23 33 Z" fill="url(#goldGradLogo)" />
+
+  <path d="M36 39 V47 C36 53 64 53 64 47 V39" fill="none" stroke="url(#goldGradLogo)" stroke-width="2.6" stroke-linecap="round" />
+
+  <path d="M50 33 Q70 35 73 45" fill="none" stroke="#FFF2C6" stroke-width="2" stroke-linecap="round" />
+  <circle cx="73" cy="48" r="2.4" fill="#FFF2C6" />
+
+  <circle cx="50" cy="72" r="16" fill="#101624" stroke="url(#goldGradLogo)" stroke-width="2.8" />
+  <circle cx="50" cy="72" r="12" fill="none" stroke="url(#goldGradLogo)" stroke-width="1.2" stroke-dasharray="2 3.2" stroke-opacity="0.8" />
+  <circle cx="50" cy="72" r="6.5" fill="url(#goldGradLogo)" />
+
+  <polygon points="50,67.5 51.5,70.5 54.5,72 51.5,73.5 50,76.5 48.5,73.5 45.5,72 48.5,70.5" fill="#101624" />
+
+  <line x1="50" y1="52" x2="50" y2="55.5" stroke="url(#goldGradLogo)" stroke-width="2.6" stroke-linecap="round" />
+  <line x1="50" y1="88.5" x2="50" y2="92" stroke="url(#goldGradLogo)" stroke-width="2.6" stroke-linecap="round" />
+  <line x1="30" y1="72" x2="33.5" y2="72" stroke="url(#goldGradLogo)" stroke-width="2.6" stroke-linecap="round" />
+  <line x1="66.5" y1="72" x2="70" y2="72" stroke="url(#goldGradLogo)" stroke-width="2.6" stroke-linecap="round" />
+
+  <path d="M30 86 Q40 96 50 101 Q60 96 70 86" fill="none" stroke="url(#goldGradLogo)" stroke-width="1.5" stroke-linecap="round" stroke-opacity="0.7" />
+</svg>

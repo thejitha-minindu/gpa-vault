@@ -1,9 +1,13 @@
-export default function AuthModal({ onGoogleLogin, isGoogleLoading, error, theme }) {
+import VaultLogo from './VaultLogo';
+
+export default function AuthModal({ onGoogleLogin, onContinueAsGuest, isGoogleLoading, error, theme }) {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: theme.bg, padding: 20 }}>
       <div style={{ width: 'min(420px, 100%)', background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 20, padding: 24, boxShadow: '0 20px 80px rgba(0,0,0,0.35)' }}>
-        <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 28, fontWeight: 700, color: theme.text, marginBottom: 6 }}>GPA Vault</div>
-        <p style={{ color: theme.sub, margin: '0 0 18px', fontSize: 14 }}>Continue with Google to sync your semester results and saved GPA data in Supabase.</p>
+        <div style={{ marginBottom: 14 }}>
+          <VaultLogo size={42} theme={theme} subtitle="Academic Tracker & GPA Vault" />
+        </div>
+        <p style={{ color: theme.sub, margin: '0 0 18px', fontSize: 14 }}>Continue with Google to sync your semester results in Supabase, or continue as a guest.</p>
 
         {error && <div style={{ color: '#fca5a5', fontSize: 12, marginBottom: 12 }}>{error}</div>}
 
@@ -26,6 +30,29 @@ export default function AuthModal({ onGoogleLogin, isGoogleLoading, error, theme
         >
           {isGoogleLoading ? 'Redirecting to Google…' : 'Continue with Google'}
         </button>
+
+        {onContinueAsGuest && (
+          <button
+            type="button"
+            onClick={onContinueAsGuest}
+            style={{
+              width: '100%',
+              marginTop: 10,
+              padding: '10px 14px',
+              background: 'transparent',
+              border: `1px solid ${theme.border}`,
+              borderRadius: 10,
+              color: theme.sub,
+              fontWeight: 500,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              fontSize: 13,
+              transition: 'background 0.15s ease',
+            }}
+          >
+            Continue as Guest
+          </button>
+        )}
       </div>
     </div>
   );

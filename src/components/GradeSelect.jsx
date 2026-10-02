@@ -1,47 +1,76 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { gColDyn, isPendingGrade, PENDING_GRADE } from '../utils/gpa';
 
-export default function GradeSelect({ value, onChange, scale, theme, width = 152, disabled = false }) {
+export default function GradeSelect({ value, onChange, scale, theme, width = 148, disabled = false }) {
   const [open, setOpen] = useState(false);
-  const [placement, setPlacement] = useState('bottom');
+  const [coords, setCoords] = useState({ top: 0, bottom: 0, left: 0, width: 215, placement: 'bottom' });
   const containerRef = useRef(null);
+  const menuRef = useRef(null);
 
   const isPending = isPendingGrade(value);
   const currentGrade = isPending ? PENDING_GRADE : value;
   const gradePoints = scale?.points?.[currentGrade];
 
-  // Close on outside click or escape
+  const updatePosition = useCallback(() => {
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    const popUp = spaceBelow < 290 && spaceAbove > spaceBelow;
+    const menuWidth = 220;
+    const left = Math.max(10, Math.min(rect.left, window.innerWidth - menuWidth - 10));
+
+    setCoords({
+      placement: popUp ? 'top' : 'bottom',
+      top: rect.bottom + 4,
+      bottom: window.innerHeight - rect.top + 4,
+      left,
+      width: menuWidth,
+    });
+  }, []);
+
+  // Close on outside click, escape, or window scroll
   useEffect(() => {
     if (!open) return;
+    updatePosition();
+
     const handleOutsideClick = event => {
-      if (containerRef.current && !containerRef.current.contains(event.target)) {
+      if (
+        containerRef.current && !containerRef.current.contains(event.target) &&
+        menuRef.current && !menuRef.current.contains(event.target)
+      ) {
         setOpen(false);
       }
     };
+
     const handleKeyDown = event => {
       if (event.key === 'Escape') setOpen(false);
     };
 
+    const handleScrollOrResize = event => {
+      // If scroll happens outside the dropdown menu itself, close it
+      if (menuRef.current && menuRef.current.contains(event.target)) return;
+      setOpen(false);
+    };
+
     document.addEventListener('mousedown', handleOutsideClick);
     document.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('scroll', handleScrollOrResize, true);
+    window.addEventListener('resize', handleScrollOrResize);
+
     return () => {
       document.removeEventListener('mousedown', handleOutsideClick);
       document.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('scroll', handleScrollOrResize, true);
+      window.removeEventListener('resize', handleScrollOrResize);
     };
-  }, [open]);
+  }, [open, updatePosition]);
 
   const toggleOpen = () => {
     if (disabled) return;
-    if (!open && containerRef.current) {
-      const rect = containerRef.current.getBoundingClientRect();
-      const spaceBelow = window.innerHeight - rect.bottom;
-      const spaceAbove = rect.top;
-      // If space below is limited (< 260px) and there's more room above, pop upwards
-      if (spaceBelow < 260 && spaceAbove > spaceBelow) {
-        setPlacement('top');
-      } else {
-        setPlacement('bottom');
-      }
+    if (!open) {
+      updatePosition();
     }
     setOpen(prev => !prev);
   };
@@ -67,29 +96,34 @@ export default function GradeSelect({ value, onChange, scale, theme, width = 152
           justifyContent: 'space-between',
           gap: 6,
           background: isPending
-            ? (theme.isDark ? 'rgba(232,184,75,0.12)' : 'rgba(232,184,75,0.18)')
+            ? (theme.isDark ? 'rgba(232,184,75,0.1)' : 'rgba(232,184,75,0.15)')
             : theme.input,
           border: `1px solid ${
             isPending
-              ? 'rgba(232,184,75,0.45)'
+              ? 'rgba(232,184,75,0.4)'
               : (open ? theme.accent : theme.border)
           }`,
           borderRadius: 8,
           padding: '6px 9px',
-          color: isPending ? theme.accent : theme.text,
+          color: isPending
+            ? theme.accent
+            : theme.text,
           fontSize: 12,
           fontWeight: isPending ? 600 : 500,
           cursor: disabled ? 'not-allowed' : 'pointer',
           outline: 'none',
           fontFamily: 'inherit',
           transition: 'all 0.15s ease',
-          boxShadow: isPending ? '0 0 10px rgba(232,184,75,0.08)' : 'none',
         }}
       >
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {isPending ? (
             <>
-              <span style={{ fontSize: 13, lineHeight: 1 }}>⏳</span>
+              {/* Minimalist Clock SVG Icon */}
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.9 }}>
+                <circle cx="12" cy="12" r="10" />
+                <polyline points="12 6 12 12 16 14" />
+              </svg>
               <span style={{ letterSpacing: '0.01em' }}>Result Pending</span>
             </>
           ) : (
@@ -103,40 +137,46 @@ export default function GradeSelect({ value, onChange, scale, theme, width = 152
             </>
           )}
         </span>
-        <span
+        <svg
+          width="10"
+          height="10"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
           style={{
-            fontSize: 10,
-            color: isPending ? theme.accent : theme.sub,
-            transform: open ? (placement === 'top' ? 'rotate(0deg)' : 'rotate(180deg)') : (placement === 'top' ? 'rotate(180deg)' : 'rotate(0deg)'),
-            transition: 'transform 0.2s ease',
-            lineHeight: 1,
             flexShrink: 0,
+            color: isPending ? theme.accent : theme.sub,
+            transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
+            transition: 'transform 0.18s ease',
           }}
         >
-          ▾
-        </span>
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
       </button>
 
-      {/* Dropdown Menu Popup with Smart Direction Placement */}
-      {open && (
+      {/* Portaled Dropdown Menu — Floats above everything, zero clipping or parent scrollbar */}
+      {open && createPortal(
         <div
+          ref={menuRef}
           role="listbox"
           style={{
-            position: 'absolute',
-            ...(placement === 'top'
-              ? { bottom: 'calc(100% + 6px)' }
-              : { top: 'calc(100% + 6px)' }),
-            left: 0,
-            width: 205,
-            background: theme.isDark ? '#161d2b' : '#ffffff',
+            position: 'fixed',
+            ...(coords.placement === 'top'
+              ? { bottom: coords.bottom }
+              : { top: coords.top }),
+            left: coords.left,
+            width: coords.width,
+            background: theme.isDark ? '#141a27' : '#ffffff',
             border: `1px solid ${theme.isDark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.12)'}`,
             borderRadius: 12,
             padding: '6px',
-            boxShadow: placement === 'top'
-              ? '0 -16px 42px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06)'
-              : '0 16px 42px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06)',
-            backdropFilter: 'blur(16px)',
-            zIndex: 80,
+            boxShadow: '0 20px 50px rgba(0,0,0,0.65), 0 0 0 1px rgba(255,255,255,0.06)',
+            backdropFilter: 'blur(20px)',
+            zIndex: 99999,
+            animation: 'fadeInScale 0.12s ease-out',
           }}
         >
           {/* Status Section: Result Pending */}
@@ -149,47 +189,52 @@ export default function GradeSelect({ value, onChange, scale, theme, width = 152
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                padding: '8px 10px',
+                padding: '7px 9px',
                 borderRadius: 8,
-                border: isPending ? '1px solid rgba(232,184,75,0.5)' : '1px solid transparent',
+                border: isPending ? '1px solid rgba(232,184,75,0.45)' : '1px solid transparent',
                 background: isPending
-                  ? (theme.isDark ? 'rgba(232,184,75,0.16)' : 'rgba(232,184,75,0.22)')
-                  : (theme.isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)'),
+                  ? (theme.isDark ? 'rgba(232,184,75,0.14)' : 'rgba(232,184,75,0.2)')
+                  : 'transparent',
                 color: theme.accent,
                 cursor: 'pointer',
                 textAlign: 'left',
                 fontFamily: 'inherit',
-                transition: 'background 0.15s ease',
+                transition: 'background 0.12s ease',
               }}
               onMouseEnter={e => {
-                if (!isPending) e.currentTarget.style.background = theme.isDark ? 'rgba(232,184,75,0.09)' : 'rgba(232,184,75,0.12)';
+                if (!isPending) e.currentTarget.style.background = theme.isDark ? 'rgba(232,184,75,0.08)' : 'rgba(232,184,75,0.1)';
               }}
               onMouseLeave={e => {
-                if (!isPending) e.currentTarget.style.background = theme.isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)';
+                if (!isPending) e.currentTarget.style.background = 'transparent';
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                <span style={{ fontSize: 14 }}>⏳</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="12 6 12 12 16 14" />
+                </svg>
                 <div>
-                  <div style={{ fontSize: 12, fontWeight: 700, lineHeight: 1.2 }}>Result Pending</div>
-                  <div style={{ fontSize: 10, color: theme.sub, marginTop: 2 }}>Not counted in GPA</div>
+                  <div style={{ fontSize: 12, fontWeight: 600, lineHeight: 1.2 }}>Result Pending</div>
+                  <div style={{ fontSize: 10, color: theme.sub, marginTop: 1 }}>Excluded from GPA</div>
                 </div>
               </div>
               {isPending && (
-                <span style={{ fontSize: 13, color: theme.accent, fontWeight: 700 }}>✓</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
               )}
             </button>
           </div>
 
           {/* Section Divider */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px 4px', borderTop: `1px solid ${theme.border}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', padding: '5px 8px 4px', borderTop: `1px solid ${theme.border}` }}>
             <span style={{ fontSize: 10, fontWeight: 600, color: theme.sub, letterSpacing: '0.07em', textTransform: 'uppercase' }}>
               Graded Options
             </span>
           </div>
 
-          {/* Graded Options List */}
-          <div style={{ maxHeight: 165, overflowY: 'auto', paddingRight: 2 }}>
+          {/* Graded Options List — generous height to see all grades without excessive scrolling */}
+          <div style={{ maxHeight: 260, overflowY: 'auto', paddingRight: 2 }}>
             {(scale?.grades || []).map(grade => {
               const pts = scale.points[grade];
               const isSelected = !isPending && currentGrade === grade;
@@ -230,7 +275,9 @@ export default function GradeSelect({ value, onChange, scale, theme, width = 152
                       {scale.labels?.[grade] ?? grade}
                     </span>
                     {isSelected && (
-                      <span style={{ fontSize: 12, color: theme.accent }}>✓</span>
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ color: theme.accent }}>
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
                     )}
                   </div>
                   {pts !== undefined && (
@@ -251,7 +298,8 @@ export default function GradeSelect({ value, onChange, scale, theme, width = 152
               );
             })}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
