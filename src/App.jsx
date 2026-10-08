@@ -42,6 +42,7 @@ export default function App() {
   const [authError, setAuthError] = useState('');
   const [googleLoading, setGoogleLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState({ busy: false, message: '' });
+  const [targetSemesterId, setTargetSemesterId] = useState(null);
 
   // Refs for synchronous save-gating (no render-delay like useState)
   const isHydratingRef = useRef(true);   // blocks saves until hydration completes
@@ -270,7 +271,7 @@ export default function App() {
   const chartData = useMemo(() =>
     semesters.map(semester => {
       const gpaValue = calcGPA(semester.courses, scale);
-      return gpaValue !== null ? { name: semester.name, gpa: parseFloat(gpaValue.toFixed(2)), credits: semCreds(semester, scale.points) } : null;
+      return gpaValue !== null ? { id: semester.id, name: semester.name, gpa: parseFloat(gpaValue.toFixed(2)), credits: semCreds(semester, scale.points) } : null;
     }).filter(Boolean),
     [semesters, scale]);
 
@@ -316,7 +317,16 @@ export default function App() {
 
   const bestEntry = chartData.length ? chartData.reduce((best, current) => current.gpa > best.gpa ? current : best, chartData[0]) : null;
 
-  const addSemester = () => setSemesters(current => [...current, { id: uid(), name: `Semester ${current.length + 1}`, weight: 1, courses: [] }]);
+  const addSemester = useCallback(() => {
+    const newId = uid();
+    setSemesters(current => [...current, { id: newId, name: `Semester ${current.length + 1}`, weight: 1, courses: [] }]);
+    return newId;
+  }, []);
+
+  const handleSelectSemester = useCallback((semesterId) => {
+    setTargetSemesterId(semesterId);
+    setView('semesters');
+  }, []);
   const updateSemester = (semesterId, patch) => setSemesters(current => current.map(semester => semester.id === semesterId ? { ...semester, ...patch } : semester));
   const deleteSemester = semesterId => setSemesters(current => current.filter(semester => semester.id !== semesterId));
   const addCourse = semesterId => setSemesters(current => current.map(semester => semester.id === semesterId ? { ...semester, courses: [...semester.courses, { id: uid(), name: '', credits: 3, grade: PENDING_GRADE, isNonGpa: false }] } : semester));
@@ -525,6 +535,7 @@ export default function App() {
                 bestEntry={bestEntry}
                 addSemester={addSemester}
                 setView={setView}
+                onSelectSemester={handleSelectSemester}
               />
             )}
 
@@ -544,6 +555,15 @@ export default function App() {
                 importCourses={importCourses}
                 onSave={saveData}
                 saveStatus={saveStatus}
+                cgpa={cgpa}
+                cgpaOwn={cgpaOwn}
+                totalCreds={totalCreds}
+                totalNonGpaCreds={totalNonGpaCreds}
+                priorGPA={priorGPA}
+                priorCreds={priorCreds}
+                bestEntry={bestEntry}
+                targetSemesterId={targetSemesterId}
+                onClearTargetSemester={() => setTargetSemesterId(null)}
               />
             )}
 

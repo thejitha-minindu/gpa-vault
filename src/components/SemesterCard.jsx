@@ -60,7 +60,7 @@ export default function SemesterCard({
   };
 
   return (
-    <div id={`semester-${semester.id}`} style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 14, marginBottom: 14, transition: 'border-color 0.15s ease' }}>
+    <div id={`semester-${semester.id}`} style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 14, marginBottom: 14, scrollMarginTop: 160, transition: 'border-color 0.15s ease, box-shadow 0.2s ease' }}>
       <div
         style={{
           display: 'flex',
@@ -156,9 +156,18 @@ export default function SemesterCard({
               style={{ ...inputStyle, width: 50, padding: '3px 6px', fontSize: 11 }}
             />
           </label>
-          <div style={{ textAlign: 'right', minWidth: 44 }}>
-            <div style={{ fontSize: 19, fontWeight: 700, color, fontFamily: "'Playfair Display',serif", lineHeight: 1 }}>{fmt(gpa)}</div>
-            <div style={{ fontSize: 10, color: theme.sub, marginTop: 2 }}>
+          <div
+            style={{
+              textAlign: 'right',
+              minWidth: 64,
+              padding: '4px 10px',
+              borderRadius: 8,
+              background: gpa !== null ? `${color}14` : (theme.isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)'),
+              border: `1px solid ${gpa !== null ? `${color}33` : theme.border}`,
+            }}
+          >
+            <div style={{ fontSize: 18, fontWeight: 700, color, fontFamily: "'Playfair Display',serif", lineHeight: 1.1 }}>{fmt(gpa)}</div>
+            <div style={{ fontSize: 10, fontWeight: 600, color: theme.sub, marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               {gpa === null && pendingCredits > 0
                 ? 'Pending'
                 : (gpa === null && nonGpaCredits > 0 && credits === 0 ? 'Non-GPA' : 'GPA')}
