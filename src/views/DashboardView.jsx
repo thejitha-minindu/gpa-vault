@@ -2,7 +2,7 @@ import { AreaChart, Area, CartesianGrid, Tooltip, ResponsiveContainer, XAxis, YA
 import GpaRing from '../components/GpaRing';
 import { calcGPA, fmt, gColDyn, isNonGpaCourse, isPendingGrade, semCreds, semNonGpaCreds, semPendingCreds } from '../utils/gpa';
 
-export default function DashboardView({ semesters, scale, scaleName, theme, priorGPA, priorCreds, chartData, cgpa, cgpaOwn, totalCreds, totalNonGpaCreds = 0, bestEntry, addSemester, setView }) {
+export default function DashboardView({ semesters, scale, scaleName, theme, priorGPA, priorCreds, chartData, cgpa, cgpaOwn, totalCreds, totalNonGpaCreds = 0, bestEntry, addSemester, setView, onSelectSemester }) {
   const col = gColDyn(cgpa, scale.max);
   const colOwn = gColDyn(cgpaOwn, scale.max);
   const ttStyle = { background: theme.ttBg, border: `1px solid ${theme.border}`, borderRadius: 8, color: theme.text, fontSize: 13 };
@@ -35,9 +35,38 @@ export default function DashboardView({ semesters, scale, scaleName, theme, prio
               totalPendingCreds > 0 ? `${totalPendingCreds} pending` : null,
             ].filter(Boolean).join(' · '),
           },
-          { label: 'Best Semester', val: bestEntry ? fmt(bestEntry.gpa) : '—', col: bestEntry ? gColDyn(bestEntry.gpa, scale.max) : theme.sub, sub: bestEntry?.name ?? '—' },
-        ].map(({ label, val, col: boxColor, sub }) => (
-          <div key={label} style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 14, padding: '16px 18px' }}>
+          {
+            label: 'Best Semester',
+            val: bestEntry ? fmt(bestEntry.gpa) : '—',
+            col: bestEntry ? gColDyn(bestEntry.gpa, scale.max) : theme.sub,
+            sub: bestEntry?.name ?? '—',
+            onClick: bestEntry?.id && onSelectSemester ? () => onSelectSemester(bestEntry.id) : null,
+          },
+        ].map(({ label, val, col: boxColor, sub, onClick }) => (
+          <div
+            key={label}
+            onClick={onClick}
+            style={{
+              background: theme.card,
+              border: `1px solid ${theme.border}`,
+              borderRadius: 14,
+              padding: '16px 18px',
+              cursor: onClick ? 'pointer' : 'default',
+              transition: 'transform 0.15s ease, border-color 0.15s ease',
+            }}
+            onMouseEnter={e => {
+              if (onClick) {
+                e.currentTarget.style.borderColor = theme.accent;
+                e.currentTarget.style.transform = 'translateY(-2px)';
+              }
+            }}
+            onMouseLeave={e => {
+              if (onClick) {
+                e.currentTarget.style.borderColor = theme.border;
+                e.currentTarget.style.transform = 'translateY(0)';
+              }
+            }}
+          >
             <div style={{ fontSize: 11, color: theme.sub, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 6 }}>{label}</div>
             <div style={{ fontSize: 28, fontWeight: 700, color: boxColor, fontFamily: "'Playfair Display',serif", lineHeight: 1.1 }}>{val}</div>
             <div style={{ fontSize: 12, color: theme.sub, marginTop: 4 }}>{sub}</div>
@@ -52,7 +81,10 @@ export default function DashboardView({ semesters, scale, scaleName, theme, prio
         </div>
 
         <div style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 14, padding: '16px 18px' }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: theme.text, marginBottom: 12 }}>Semesters</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: theme.text }}>Semesters</div>
+            <span style={{ fontSize: 11, color: theme.sub }}>Click a semester to view & edit</span>
+          </div>
           {semesters.length === 0 ? (
             <div style={{ color: theme.sub, fontSize: 13, marginBottom: 10 }}>No semesters yet.</div>
           ) : semesters.map(semester => {
@@ -61,9 +93,31 @@ export default function DashboardView({ semesters, scale, scaleName, theme, prio
             const pendingCredits = semPendingCreds(semester);
             const nonGpaCredits = semNonGpaCreds(semester);
             return (
-              <div key={semester.id} style={{ marginBottom: 10, cursor: 'pointer' }} onClick={() => setView('semesters')}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-                  <span style={{ fontSize: 13, color: theme.text, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '60%' }}>{semester.name}</span>
+              <div
+                key={semester.id}
+                style={{
+                  marginBottom: 10,
+                  cursor: 'pointer',
+                  padding: '6px 8px',
+                  borderRadius: 8,
+                  transition: 'background 0.15s ease',
+                }}
+                onClick={() => onSelectSemester ? onSelectSemester(semester.id) : setView('semesters')}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = theme.isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.03)';
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = 'transparent';
+                }}
+                title={`Open and edit ${semester.name}`}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, maxWidth: '65%' }}>
+                    <span style={{ fontSize: 13, color: theme.text, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{semester.name}</span>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={theme.sub} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5, flexShrink: 0 }}>
+                      <polyline points="9 18 15 12 9 6" />
+                    </svg>
+                  </div>
                   <span style={{ fontSize: 13, fontWeight: 700, color: gColDyn(gpaValue, scale.max) }}>
                     {fmt(gpaValue)}{' '}
                     <span style={{ fontSize: 11, color: theme.sub, fontWeight: 400 }}>
@@ -78,7 +132,19 @@ export default function DashboardView({ semesters, scale, scaleName, theme, prio
             );
           })}
 
-          <button onClick={() => { addSemester(); setView('semesters'); }} style={{ padding: '6px 14px', background: theme.accentBg, border: `1px solid rgba(232,184,75,0.3)`, borderRadius: 10, color: theme.accent, cursor: 'pointer', fontSize: 13, fontWeight: 500, fontFamily: 'inherit' }}>+ Add Semester</button>
+          <button
+            onClick={() => {
+              const newId = addSemester();
+              if (newId && onSelectSemester) {
+                onSelectSemester(newId);
+              } else {
+                setView('semesters');
+              }
+            }}
+            style={{ padding: '6px 14px', background: theme.accentBg, border: `1px solid rgba(232,184,75,0.3)`, borderRadius: 10, color: theme.accent, cursor: 'pointer', fontSize: 13, fontWeight: 500, fontFamily: 'inherit' }}
+          >
+            + Add Semester
+          </button>
         </div>
       </div>
 
