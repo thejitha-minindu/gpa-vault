@@ -33,7 +33,7 @@ const extractUserId = (req: Request): string => {
 };
 
 // ── Schema Definition ─────────────────────────────────────────────────────────
-const courseSchema = (grades: string[]) => ({
+const courseSchema = (_grades: string[]) => ({
   type: 'object',
   properties: {
     courses: {
@@ -41,9 +41,10 @@ const courseSchema = (grades: string[]) => ({
       items: {
         type: 'object',
         properties: {
-          name: { type: 'string' },
-          credits: { type: 'number' },
-          grade: { type: 'string', enum: grades.length ? grades : undefined },
+          name: { type: 'string', description: 'Module / course title' },
+          credits: { type: 'number', description: 'Numeric credits (check both GPA and Non-GPA columns)' },
+          grade: { type: 'string', description: 'Letter grade or "Pending" if result pending, or "Pass" if non-gpa' },
+          isNonGpa: { type: 'boolean', description: 'True if course is Non-GPA or credits are listed in a Non-GPA column' },
         },
         required: ['name'],
       },
@@ -59,12 +60,13 @@ const buildPrompt = (allowedGrades: string[]) => [
   'Rules:',
   '1. Return only genuine course/module rows. Do NOT extract table headers, degree titles, semester summary GPA lines, or total credit counts.',
   '2. Preserve the original row order exactly as shown in the image.',
-  '3. Extract course name (e.g. "Data Structures & Algorithms", "Calculus II").',
-  '4. Extract numeric credits / credit units if clearly visible (e.g. 3, 4, 1.5). If not visible or uncertain, omit the credits field.',
-  '5. Extract letter grade (e.g. "A+", "A", "B-") and match with the allowed grades.',
-  '6. Pay close attention to "+" and "-" signs on grades.',
+  '3. Extract course name (e.g. "Enterprise Application Development", "Calculus II"). If module code is present, you may extract the title or code + title.',
+  '4. Extract numeric credits / credit units (e.g. 3, 2.5, 2, 1.5). Check both GPA and Non-GPA credit columns. If credits are under a Non-GPA column, extract that number and mark isNonGpa as true.',
+  '5. Determine Non-GPA status: set isNonGpa to true if the course is explicitly marked as Non-GPA, or if its credits appear under a "Non GPA" column. Otherwise false.',
+  '6. Extract grade: match letter grades (e.g. "A+", "A", "B-") from the allowed scale. If the grade is marked as "Pending", "Result Pending", "In Progress", or awaiting results, return "Pending". If it is a non-gpa pass, return "Pass".',
+  '7. Pay close attention to "+" and "-" signs on grades.',
   '',
-  `Allowed grades for this scale: ${allowedGrades.join(', ')}`,
+  `Allowed / standard grades for this scale: ${allowedGrades.join(', ')}`,
   '',
   'If you cannot find any course entries, return {"courses": []}.'
 ].join('\n');
@@ -159,7 +161,7 @@ const callNvidia = async (apiKey: string, prompt: string, base64Image: string, m
             {
               role: 'user',
               content: [
-                { type: 'text', text: prompt + '\nYou MUST return ONLY valid raw JSON with {"courses": [{"name": "...", "credits": 3, "grade": "A"}]}.' },
+                { type: 'text', text: prompt + '\nYou MUST return ONLY valid raw JSON with {"courses": [{"name": "...", "credits": 3, "grade": "A", "isNonGpa": false}]}.' },
                 {
                   type: 'image_url',
                   image_url: {
