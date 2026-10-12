@@ -344,9 +344,11 @@ export default function App() {
           credits: course.credits || 3,
           grade: isPendingGrade(course.grade)
             ? PENDING_GRADE
+            : scale.grades.includes(course.grade)
+            ? course.grade
             : isNonGpa
             ? NON_GPA_GRADE
-            : (scale.grades.includes(course.grade) ? course.grade : scale.grades[0]),
+            : scale.grades[0],
           isNonGpa,
         };
       });

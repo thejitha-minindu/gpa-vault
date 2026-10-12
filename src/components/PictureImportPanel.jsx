@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { isPendingGrade, PENDING_GRADE } from '../utils/gpa';
+import { isNonGpaGrade, isPendingGrade, NON_GPA_GRADE, PENDING_GRADE } from '../utils/gpa';
 
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 
@@ -26,7 +26,8 @@ export default function PictureImportPanel({ scale, theme, onImport, onClose }) 
   const [lastRawResponse, setLastRawResponse] = useState('');
   const lastImageRef = useRef(null);
 
-  const canImport = rows.some(row => row.name.trim()) && rows.filter(r => r.name.trim()).every(row => row.credits !== '' && row.grade !== '');
+  const canImport = rows.some(row => row.name.trim()) &&
+    rows.filter(r => r.name.trim()).every(row => row.credits !== '' && !isNaN(Number(row.credits)) && Number(row.credits) > 0);
   const inputStyle = useMemo(() => ({
     background: theme.input,
     border: `1px solid ${theme.border}`,
@@ -138,7 +139,7 @@ export default function PictureImportPanel({ scale, theme, onImport, onClose }) 
         body: JSON.stringify({
           imageBase64,
           mimeType,
-          allowedGrades: scale.grades,
+          allowedGrades: [...scale.grades, 'Pending', PENDING_GRADE, 'Pass', NON_GPA_GRADE],
         }),
       });
 
@@ -187,18 +188,38 @@ export default function PictureImportPanel({ scale, theme, onImport, onClose }) 
       const nextRows = rawCourses
         .map(course => {
           const rawGrade = String(course.grade ?? '').trim();
-          const isPending = isPendingGrade(rawGrade);
-          const gradeInScale = scale.grades.includes(rawGrade) || isPending;
+          const isPending = isPendingGrade(rawGrade) || rawGrade.toLowerCase().includes('pending');
+          const isNonGpa = Boolean(
+            course.isNonGpa ||
+            course.nonGpa ||
+            isNonGpaGrade(rawGrade) ||
+            (course.name && String(course.name).toLowerCase().includes('non-gpa'))
+          );
+          const gradeInScale = scale.grades.includes(rawGrade);
           const creditsVal = course.credits !== undefined && course.credits !== null && course.credits !== ''
             ? Number(course.credits)
-            : '';
+            : 3;
+
+          let resolvedGrade = PENDING_GRADE;
+          if (isPending) {
+            resolvedGrade = PENDING_GRADE;
+          } else if (isNonGpa && (isNonGpaGrade(rawGrade) || !rawGrade)) {
+            resolvedGrade = NON_GPA_GRADE;
+          } else if (gradeInScale) {
+            resolvedGrade = rawGrade;
+          } else if (rawGrade) {
+            resolvedGrade = rawGrade;
+          } else {
+            resolvedGrade = isNonGpa ? NON_GPA_GRADE : PENDING_GRADE;
+          }
 
           return {
             name: String(course.name ?? '').trim(),
-            credits: isNaN(creditsVal) ? '' : creditsVal,
-            grade: isPending ? PENDING_GRADE : (gradeInScale ? rawGrade : ''),
+            credits: isNaN(creditsVal) ? 3 : creditsVal,
+            isNonGpa,
+            grade: resolvedGrade,
             // Track if the AI returned a grade that doesn't match the current scale
-            gradeMismatch: (!gradeInScale && rawGrade) ? rawGrade : '',
+            gradeMismatch: (!gradeInScale && !isPending && !isNonGpa && rawGrade) ? rawGrade : '',
           };
         })
         .filter(course => course.name);
@@ -230,13 +251,18 @@ export default function PictureImportPanel({ scale, theme, onImport, onClose }) 
   };
 
   const addBlankRow = () => {
-    setRows(current => [...current, { name: '', credits: '', grade: '', gradeMismatch: '' }]);
+    setRows(current => [...current, { name: '', credits: 3, grade: PENDING_GRADE, isNonGpa: false, gradeMismatch: '' }]);
   };
 
   const importRows = () => {
     const cleanRows = rows
-      .map(row => ({ ...row, name: row.name.trim(), credits: Number(row.credits) }))
-      .filter(row => row.name && !isNaN(row.credits) && row.grade);
+      .map(row => ({
+        name: row.name.trim(),
+        credits: Number(row.credits) || 3,
+        grade: row.grade || (row.isNonGpa ? NON_GPA_GRADE : PENDING_GRADE),
+        isNonGpa: Boolean(row.isNonGpa),
+      }))
+      .filter(row => row.name && !isNaN(row.credits) && row.credits > 0);
 
     if (!cleanRows.length) return;
     onImport(cleanRows, { replaceExisting });
@@ -310,48 +336,120 @@ export default function PictureImportPanel({ scale, theme, onImport, onClose }) 
       {rows.length > 0 && (
         <div>
           <div style={{ display: 'flex', gap: 8, marginBottom: 6, color: theme.sub, fontSize: 10, fontWeight: 600 }}>
-            <span style={{ flex: 2 }}>MODULE</span>
-            <span style={{ width: 66 }}>CREDITS</span>
-            <span style={{ width: 116 }}>GRADE</span>
+            <span style={{ flex: 2, minWidth: 100 }}>MODULE</span>
+            <span style={{ width: 62 }}>CREDITS</span>
+            <span style={{ width: 72, textAlign: 'center' }}>TYPE</span>
+            <span style={{ width: 130 }}>GRADE</span>
             <span style={{ width: 26 }} />
           </div>
           <div style={{ maxHeight: 220, overflow: 'auto', paddingRight: 2 }}>
-            {rows.map((row, index) => (
-              <div key={`${row.name}-${index}`} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-                <input value={row.name} onChange={event => updateRow(index, { name: event.target.value })} placeholder="Module name" style={{ ...inputStyle, flex: 2, minWidth: 0 }} />
-                <input type="number" min={0.5} max={6} step={0.5} value={row.credits} onChange={event => updateRow(index, { credits: event.target.value })} placeholder="-" style={{ ...inputStyle, width: 66 }} />
-                <div style={{ position: 'relative', width: 116 }}>
-                  <select
-                    value={isPendingGrade(row.grade) ? PENDING_GRADE : row.grade}
-                    onChange={event => updateRow(index, { grade: event.target.value })}
-                    style={{
-                      ...inputStyle,
-                      width: '100%',
-                      cursor: 'pointer',
-                      background: theme.card,
-                      color: isPendingGrade(row.grade) ? theme.accent : (row.grade ? theme.text : theme.sub),
-                      fontWeight: isPendingGrade(row.grade) ? 600 : 400,
-                      borderColor: isPendingGrade(row.grade) ? 'rgba(232,184,75,0.45)' : theme.border,
-                    }}
-                  >
-                    <option value="" disabled style={{ background: theme.card, color: theme.sub }}>-</option>
-                    <option value={PENDING_GRADE} style={{ background: theme.card, color: theme.accent, fontWeight: 600 }}>
-                      ⏳ Result Pending
-                    </option>
-                    {scale.grades.map(grade => (
-                      <option key={grade} value={grade} style={{ background: theme.card, color: theme.text }}>
-                        {scale.labels?.[grade] ?? grade}
+            {rows.map((row, index) => {
+              const isPending = isPendingGrade(row.grade);
+              const isNonGpa = Boolean(row.isNonGpa);
+              return (
+                <div key={`${row.name}-${index}`} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+                  <input
+                    value={row.name}
+                    onChange={event => updateRow(index, { name: event.target.value })}
+                    placeholder="Module name"
+                    style={{ ...inputStyle, flex: 2, minWidth: 100 }}
+                  />
+                  <input
+                    type="number"
+                    min={0.5}
+                    max={6}
+                    step={0.5}
+                    value={row.credits}
+                    onChange={event => updateRow(index, { credits: event.target.value })}
+                    placeholder="-"
+                    style={{ ...inputStyle, width: 62 }}
+                  />
+                  <div style={{ width: 72, display: 'flex', justifyContent: 'center' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextIsNonGpa = !isNonGpa;
+                        updateRow(index, {
+                          isNonGpa: nextIsNonGpa,
+                          grade: nextIsNonGpa && (!row.grade || isPending)
+                            ? NON_GPA_GRADE
+                            : (!nextIsNonGpa && row.grade === NON_GPA_GRADE ? PENDING_GRADE : row.grade),
+                        });
+                      }}
+                      title={
+                        isNonGpa
+                          ? 'Non-GPA module: Excluded from GPA calculation. Click to switch to GPA module.'
+                          : 'Standard GPA module: Included in GPA. Click to make Non-GPA module.'
+                      }
+                      style={{
+                        padding: '4px 6px',
+                        borderRadius: 6,
+                        border: `1px solid ${
+                          isNonGpa
+                            ? (theme.isDark ? 'rgba(99, 102, 241, 0.35)' : 'rgba(99, 102, 241, 0.45)')
+                            : theme.border
+                        }`,
+                        background: isNonGpa
+                          ? (theme.isDark ? 'rgba(99, 102, 241, 0.12)' : 'rgba(99, 102, 241, 0.15)')
+                          : (theme.isDark ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.02)'),
+                        color: isNonGpa ? '#a5b4fc' : theme.sub,
+                        fontSize: 10,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        fontFamily: 'inherit',
+                        whiteSpace: 'nowrap',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      {isNonGpa ? 'Non-GPA' : 'GPA'}
+                    </button>
+                  </div>
+                  <div style={{ position: 'relative', width: 130 }}>
+                    <select
+                      value={
+                        isNonGpa && isNonGpaGrade(row.grade)
+                          ? NON_GPA_GRADE
+                          : (isPending ? PENDING_GRADE : row.grade)
+                      }
+                      onChange={event => updateRow(index, { grade: event.target.value })}
+                      style={{
+                        ...inputStyle,
+                        width: '100%',
+                        cursor: 'pointer',
+                        background: theme.card,
+                        color: isPending
+                          ? theme.accent
+                          : (isNonGpa && isNonGpaGrade(row.grade) ? '#a5b4fc' : (row.grade ? theme.text : theme.sub)),
+                        fontWeight: isPending || (isNonGpa && isNonGpaGrade(row.grade)) ? 600 : 400,
+                        borderColor: isPending
+                          ? 'rgba(232,184,75,0.45)'
+                          : (isNonGpa ? 'rgba(99,102,241,0.35)' : theme.border),
+                      }}
+                    >
+                      <option value="" disabled style={{ background: theme.card, color: theme.sub }}>-</option>
+                      <option value={PENDING_GRADE} style={{ background: theme.card, color: theme.accent, fontWeight: 600 }}>
+                        ⏳ Result Pending
                       </option>
-                    ))}
-                  </select>
-                  {/* Grade mismatch warning — AI returned a grade not in the current scale */}
-                  {row.gradeMismatch && (
-                    <span title={`AI returned "${row.gradeMismatch}" which isn't in your current scale — pick one manually`} style={{ position: 'absolute', right: -16, top: '50%', transform: 'translateY(-50%)', fontSize: 13, cursor: 'help', color: '#fbbf24' }}>⚠️</span>
-                  )}
+                      {isNonGpa && (
+                        <option value={NON_GPA_GRADE} style={{ background: theme.card, color: '#a5b4fc', fontWeight: 600 }}>
+                          Pass (Non-GPA)
+                        </option>
+                      )}
+                      {scale.grades.map(grade => (
+                        <option key={grade} value={grade} style={{ background: theme.card, color: theme.text }}>
+                          {scale.labels?.[grade] ?? grade}
+                        </option>
+                      ))}
+                    </select>
+                    {/* Grade mismatch warning — AI returned a grade not in the current scale */}
+                    {row.gradeMismatch && (
+                      <span title={`AI returned "${row.gradeMismatch}" which isn't in your current scale — pick one manually`} style={{ position: 'absolute', right: -16, top: '50%', transform: 'translateY(-50%)', fontSize: 13, cursor: 'help', color: '#fbbf24' }}>⚠️</span>
+                    )}
+                  </div>
+                  <button onClick={() => removeRow(index)} aria-label={`Remove ${row.name || 'course'}`} style={{ width: 26, background: 'transparent', border: 'none', cursor: 'pointer', color: theme.red, fontSize: 17, lineHeight: 1 }}>x</button>
                 </div>
-                <button onClick={() => removeRow(index)} aria-label={`Remove ${row.name || 'course'}`} style={{ width: 26, background: 'transparent', border: 'none', cursor: 'pointer', color: theme.red, fontSize: 17, lineHeight: 1 }}>x</button>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
